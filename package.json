@@ -1,0 +1,27 @@
+{
+  "name": "oofy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OOFY — Wear Your Confidence. Full-stack e-commerce monorepo (Next.js + Express + PostgreSQL + Prisma).",
+  "workspaces": ["frontend", "backend", "shared"],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "db:generate": "npm run generate --workspace=backend",
+    "db:migrate": "npm run migrate --workspace=backend",
+    "db:push": "npm run push --workspace=backend",
+    "db:seed": "npm run seed --workspace=backend",
+    "db:studio": "npm run studio --workspace=backend",
+    "build:shared": "npm run build --workspace=shared",
+    "build:backend": "npm run build --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "start": "npm run start --workspace=backend",
+    "setup": "npm install && npm run db:generate && npm run db:migrate && npm run db:seed",
+    "test": "npm run test --workspace=backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
