@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 245 242 233;
+    --foreground: 17 17 17;
+    --card: 245 242 233;
+    --card-foreground: 17 17 17;
+    --popover: 245 242 233;
+    --popover-foreground: 17 17 17;
+    --primary: 17 17 17;
+    --primary-foreground: 245 242 233;
+    --secondary: 220 215 200;
+    --secondary-foreground: 17 17 17;
+    --muted: 220 215 200;
+    --muted-foreground: 90 80 70;
+    --accent: 11 93 69;
+    --accent-foreground: 245 242 233;
+    --destructive: 17 17 17;
+    --destructive-foreground: 245 242 233;
+    --border: 200 195 185;
+    --input: 245 242 233;
+    --ring: 17 17 17;
+    --radius: 0.25rem;
+  }
+
+  .dark {
+    --background: 11 11 11;
+    --foreground: 245 242 233;
+    --card: 17 17 17;
+    --card-foreground: 245 242 233;
+    --popover: 17 17 17;
+    --popover-foreground: 245 242 233;
+    --primary: 245 242 233;
+    --primary-foreground: 17 17 17;
+    --secondary: 25 25 25;
+    --secondary-foreground: 245 242 233;
+    --muted: 25 25 25;
+    --muted-foreground: 160 150 140;
+    --accent: 11 93 69;
+    --accent-foreground: 245 242 233;
+    --destructive: 25 25 25;
+    --destructive-foreground: 245 242 233;
+    --border: 35 35 35;
+    --input: 17 17 17;
+    --ring: 11 93 69;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    @apply antialiased;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
