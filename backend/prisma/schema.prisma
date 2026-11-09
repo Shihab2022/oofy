@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  products    Product[]
+}
+
+model Product {
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String       @unique
+  description   String?
+  basePrice     Decimal      @db.Decimal(12, 2)
+  discountPrice Decimal?     @db.Decimal(12, 2)
+  isFeatured    Boolean      @default(false)
+  isNewArrival  Boolean      @default(false)
+  isPublished   Boolean      @default(true)
+  categoryId    String       @db.Uuid
+  category      Category     @relation(fields: [categoryId], references: [id])
+  images        ProductImage[]
+  variants      ProductVariant[]
+  orderItems    OrderItem[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model ProductImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  url       String
+  alt       String?
+  position  Int      @default(0)
+  productId String   @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductVariant {
+  id         String   @id @default(uuid()) @db.Uuid
+  size       String
+  color      String?
+  sku        String?  @unique
+  stock      Int      @default(0)
+  price      Decimal? @db.Decimal(12, 2)
+  productId  String   @db.Uuid
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  @@unique([productId, size, color])
+}
+
+model Order {
+  id              String      @id @default(uuid()) @db.Uuid
+  orderNumber     String      @unique
+  customerName    String
+  customerPhone   String
+  customerEmail   String?
+  address         String
+  district        String
+  area            String
+  orderNotes      String?
+  status          String      @default("PENDING")
+  subtotal        Decimal     @db.Decimal(12, 2)
+  deliveryCharge  Decimal     @db.Decimal(12, 2)
+  totalAmount     Decimal     @db.Decimal(12, 2)
+  paymentMethod   String      @default("COD")
+  paymentStatus   String      @default("PENDING")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+  payments        Payment[]
+}
+
+model OrderItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderId     String   @db.Uuid
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String   @db.Uuid
+  product     Product  @relation(fields: [productId], references: [id])
+  variantId   String?  @db.Uuid
+  variant     ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity    Int
+  price       Decimal  @db.Decimal(12, 2)
+  size        String
+  color       String?
+  createdAt   DateTime @default(now())
+}
+
+model Address {
+  id          String   @id @default(uuid()) @db.Uuid
+  label       String?
+  street      String
+  district    String
+  area        String
+  city        String   @default("Dhaka")
+  country     String   @default("Bangladesh")
+  postalCode  String?
+  customerId  String?  @db.Uuid
+  customer    Customer? @relation(fields: [customerId], references: [id])
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String   @unique
+  email     String?
+  addresses Address[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StoreSettings {
+  id                      String   @id @default(uuid()) @db.Uuid
+  storeName               String   @default("OOFY")
+  storeTagline            String   @default("Wear Your Confidence")
+  contactEmail            String   @default("oofybrand@gmail.com")
+  deliveryCharge          Decimal  @db.Decimal(12, 2) @default(60)
+  freeShippingThreshold   Decimal? @db.Decimal(12, 2)
+  codEnabled              Boolean  @default(true)
+  updatedAt               DateTime @updatedAt
+}
+
+model Payment {
+  id            String   @id @default(uuid()) @db.Uuid
+  orderId       String   @db.Uuid
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method        String
+  amount        Decimal  @db.Decimal(12, 2)
+  status        String   @default("PENDING")
+  transactionId String?
+  createdAt     DateTime @default(now())
+}
+
+model EmailSettings {
+  id        String   @id @default(uuid()) @db.Uuid
+  smtpHost  String
+  smtpPort  Int
+  smtpUser  String
+  smtpPass  String
+  fromEmail String
+  fromName  String
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
