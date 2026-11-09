@@ -67,9 +67,9 @@ export default function ProductPage() {
   const displayPrice = product.discountPrice !== null ? product.discountPrice : product.basePrice;
   const hasDiscount = product.discountPrice !== null;
 
-  const availableSizes = Array.from(new Set(product.variants.map((v: any) => v.size)) as string[]);
+  const availableSizes = Array.from(new Set(product.variants.map((v: any) => v.size))) as string[];
   const colorsForSize = (size: string) =>
-    Array.from(new Set(product.variants.filter((v: any) => v.size === size).map((v: any) => v.color)) as (string | null)[]);
+    Array.from(new Set(product.variants.filter((v: any) => v.size === size).map((v: any) => v.color))) as (string | null)[];
 
   const variantFor = (size: string, color: string | null) =>
     product.variants.find((v: any) => v.size === size && v.color === color);
@@ -110,10 +110,10 @@ export default function ProductPage() {
         <div className="space-y-4">
           <div className="aspect-[4/5] rounded-xl rounded border border-[#111]/10 bg-[#F5F2E9]/20 overflow-hidden relative">
             <Image
-              src={product.images[selectedImage]?.url}
+              src={product.images[selectedImage]?.url || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1200&h=1600&fit=crop'}
               alt={product.name}
               fill
-              className="object-cover object-center"
+              className="fashion-image object-cover object-center"
               sizes="(max-width: 768px) 90vw, 45vw"
             />
             <div className="absolute inset-0 flex items-center justify-center">
@@ -134,7 +134,12 @@ export default function ProductPage() {
                   selectedImage === i ? 'border-[#111]' : 'border-transparent hover:border-[#111]/40'
                 }`}
               >
-                <Image src={img.url} alt="" fill className="object-cover" />
+                <Image
+                  src={img.url}
+                  alt=""
+                  fill
+                  className="fashion-image object-cover"
+                />
               </button>
             ))}
           </div>
@@ -173,7 +178,7 @@ export default function ProductPage() {
                   const active = selectedVariant?.size === s;
                   return (
                     <button
-                      key={`size-${s}`}
+                      key={s}
                       onClick={() => setSelectedVariant(v)}
                       disabled={disabled}
                       className={`h-10 w-10 rounded-md border flex items-center justify-center text-xs font-bold transition-colors ${
@@ -182,7 +187,7 @@ export default function ProductPage() {
                           : disabled
                           ? 'border-[#111]/20 text-[#111]/40'
                           : 'border-[#111] text-[#111] hover:bg-[#111]/5'
-                        }`}
+                      }`}
                     >
                       {s}
                     </button>
@@ -284,11 +289,11 @@ function ProductCard({ product }: { product: any }) {
     <article className="flex flex-col gap-2">
       <div className="relative aspect-[4/5] overflow-hidden bg-[#F5F2E9]/40">
         <Image
-          src={mainImage}
+          src={mainImage || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&h=800&fit=crop'}
           alt={product.name}
           fill
           sizes="(max-width: 768px) 45vw, (max-width: 1200px) 25vw, 20vw"
-          className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
+          className="fashion-image object-cover object-center transition-transform duration-500 group-hover:scale-105"
           priority
         />
       </div>
