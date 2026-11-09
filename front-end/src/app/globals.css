@@ -61,9 +61,54 @@
   }
 }
 
+@layer components {
+  .container-custom {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+  
+  .fashion-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+  
+  .product-image-container {
+    aspect-ratio: 4/5;
+    overflow: hidden;
+    background: hsl(245 242 233 / 0.3);
+  }
+  
+  .product-card-hover {
+    transition: all 0.3s ease;
+  }
+  
+  .product-card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px -10px hsl(17 17 17 / 0.1);
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0);
   }
 }
 
@@ -71,12 +116,28 @@ html {
   scroll-behavior: smooth;
 }
 
-@layer utilities {
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+/* Responsive typography */
+@media (max-width: 640px) {
+  .container-custom {
+    padding: 0 1rem;
   }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Image fallback styling */
+.image-fallback {
+  background-color: hsl(245 242 233 / 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }

@@ -50,7 +50,18 @@ app.use(errorMiddleware);
 const PORT = Number(process.env.PORT) || 5000;
 
 async function bootstrap() {
-  await seedAdmin();
+  // Seed admin user (safe to run if tables exist; skipped if migrations not yet run)
+  try {
+    await seedAdmin();
+    console.log('✅ Admin user seeded');
+  } catch (err: any) {
+    if (err.code === 'P2021') {
+      console.log('⚠️  Database tables not found. Run: npx prisma migrate deploy');
+    } else {
+      console.error('❌ Seed failed:', err.message);
+    }
+  }
+
   app.listen(PORT, () => {
     console.log(`OOFY backend running on port ${PORT}`);
   });

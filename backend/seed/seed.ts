@@ -184,34 +184,61 @@ async function main() {
     });
   }
 
-  await db.storeSettings.upsert({
-    where: { id: 'oofy-store-settings' },
-    update: {},
-    create: {
-      id: 'oofy-store-settings',
-      storeName: 'OOFY',
-      storeTagline: 'Wear Your Confidence',
-      contactEmail: 'oofybrand@gmail.com',
-      deliveryCharge: 60,
-      freeShippingThreshold: 2000,
-      codEnabled: true,
-    },
-  });
+  // Store Settings (use findFirst + create/update since id is UUID)
+  let storeSettings = await db.storeSettings.findFirst();
+  if (storeSettings) {
+    await db.storeSettings.update({
+      where: { id: storeSettings.id },
+      data: {
+        storeName: 'OOFY',
+        storeTagline: 'Wear Your Confidence',
+        contactEmail: 'oofybrand@gmail.com',
+        deliveryCharge: 60,
+        freeShippingThreshold: 2000,
+        codEnabled: true,
+      },
+    });
+  } else {
+    await db.storeSettings.create({
+      data: {
+        storeName: 'OOFY',
+        storeTagline: 'Wear Your Confidence',
+        contactEmail: 'oofybrand@gmail.com',
+        deliveryCharge: 60,
+        freeShippingThreshold: 2000,
+        codEnabled: true,
+      },
+    });
+  }
 
-  await db.emailSettings.upsert({
-    where: { id: 'oofy-email-settings' },
-    update: {},
-    create: {
-      id: 'oofy-email-settings',
-      smtpHost: process.env.SMTP_HOST || 'smtp.mailtrap.io',
-      smtpPort: Number(process.env.SMTP_PORT) || 2525,
-      smtpUser: process.env.SMTP_USER || '',
-      smtpPass: process.env.SMTP_PASS || '',
-      fromEmail: process.env.SMTP_FROM || 'noreply@oofy.com',
-      fromName: process.env.SMTP_FROM_NAME || 'OOFY',
-      isActive: true,
-    },
-  });
+  // Email Settings (use findFirst + create/update since id is UUID)
+  let emailSettings = await db.emailSettings.findFirst();
+  if (emailSettings) {
+    await db.emailSettings.update({
+      where: { id: emailSettings.id },
+      data: {
+        smtpHost: process.env.SMTP_HOST || 'smtp.mailtrap.io',
+        smtpPort: Number(process.env.SMTP_PORT) || 2525,
+        smtpUser: process.env.SMTP_USER || '',
+        smtpPass: process.env.SMTP_PASS || '',
+        fromEmail: process.env.SMTP_FROM || 'noreply@oofy.com',
+        fromName: process.env.SMTP_FROM_NAME || 'OOFY',
+        isActive: true,
+      },
+    });
+  } else {
+    await db.emailSettings.create({
+      data: {
+        smtpHost: process.env.SMTP_HOST || 'smtp.mailtrap.io',
+        smtpPort: Number(process.env.SMTP_PORT) || 2525,
+        smtpUser: process.env.SMTP_USER || '',
+        smtpPass: process.env.SMTP_PASS || '',
+        fromEmail: process.env.SMTP_FROM || 'noreply@oofy.com',
+        fromName: process.env.SMTP_FROM_NAME || 'OOFY',
+        isActive: true,
+      },
+    });
+  }
 
   console.log('✅ Seed complete.');
   console.log(`   Categories: ${categories.length}`);

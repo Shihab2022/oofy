@@ -9,7 +9,7 @@ import type { Product } from '@/types';
 
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart();
-  const mainImage = product.images[0]?.url;
+  const mainImage = product.images?.[0]?.url;
   const firstVariant = product.variants[0];
   const price = product.discountPrice ?? product.basePrice;
   const hasDiscount = product.discountPrice !== null;
@@ -29,14 +29,14 @@ export function ProductCard({ product }: { product: Product }) {
   };
 
   return (
-    <article className="flex flex-col group relative">
-      <div className="relative aspect-[4/5] overflow-hidden bg-[#F5F2E9]/40">
+    <article className="flex flex-col group relative product-card-hover">
+      <div className="relative aspect-[4/5] overflow-hidden bg-[#F5F2E9]/40 product-image-container">
         <Image
-          src={mainImage}
+          src={mainImage || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&h=800&fit=crop'}
           alt={product.name}
           fill
-          sizes="(max-width: 768px) 45vw, (max-width: 1200px) 25vw, 20vw"
-          className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
+          sizes="(max-width: 640px) 45vw, (max-width: 1200px) 25vw, 20vw"
+          className="fashion-image transition-transform duration-500 group-hover:scale-105"
           priority
         />
         {product.isNewArrival && (

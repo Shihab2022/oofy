@@ -15,7 +15,7 @@ export const metadata = {
 
 async function getHeroImage() {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/products/featured`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/products/featured`, {
       cache: 'no-store',
     });
     const json = await res.json();
@@ -43,12 +43,19 @@ export default async function HomePage() {
               src={heroImage}
               alt="OOFY campaign"
               fill
-              sizes="100vw"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 800px"
               className="object-cover object-center"
               priority
             />
           ) : (
-            <div className="w-full h-full bg-[#0B5D45]" />
+            <Image
+              src="https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1200&h=1600&fit=crop"
+              alt="OOFY campaign"
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 800px"
+              className="object-cover object-center"
+              priority
+            />
           )}
           <div className="absolute inset-0 bg-[#111]/60" />
         </div>
@@ -68,7 +75,7 @@ export default async function HomePage() {
             </Link>
             <a
               href="/about"
-              className="border border-[#111] text-[#111] px-6 py-3 text-xs font-bold uppercase tracking-wider hover:bg-[#111] hover:text-[#F5F2E9] transition-colors inline-block"
+              className="border border-[#111] text-[#111] px-6 py-3 text-xs font-bold uppercase tracking-wider hover:bg-[#111] hover:text-[#F5F2E5] transition-colors inline-block"
             >
               EXPLORE OOFY
             </a>
@@ -124,7 +131,7 @@ export default async function HomePage() {
           </div>
           <div className="aspect-[4/5] rounded-xl border border-[#111]/10 bg-[#F5F2E9]/40 overflow-hidden">
             <Image
-              src={heroImage || 'https://placehold.co/800x1000/111111/F5F2E9?text=OOFY'}
+              src={heroImage || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1200&h=1600&fit=crop'}
               alt="OOFY brand"
               fill
               className="object-cover object-center"
