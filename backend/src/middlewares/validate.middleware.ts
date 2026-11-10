@@ -16,7 +16,13 @@ export const validate =
         path: issue.path.join('.'),
         message: issue.message,
       }));
-      return next(new ApiError(400, 'Validation failed', true) as ApiError & { issues?: typeof issues });
+      const error = new ApiError(
+        400,
+        `Validation failed: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+        true,
+      ) as ApiError & { issues?: typeof issues };
+      error.issues = issues;
+      return next(error);
     }
 
     next();

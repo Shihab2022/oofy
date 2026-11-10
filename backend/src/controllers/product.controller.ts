@@ -142,6 +142,11 @@ export const createProduct = asyncHandler(
       name,
       slug,
       description,
+      shortDescription,
+      material,
+      fit,
+      careInstructions,
+      countryOfOrigin,
       basePrice,
       discountPrice,
       categoryId,
@@ -157,11 +162,19 @@ export const createProduct = asyncHandler(
       throw new ApiError(409, 'A product with this slug already exists');
     }
 
+    const category = await db.category.findUnique({ where: { id: categoryId } });
+    if (!category) throw new ApiError(400, 'Choose a valid category from the category list');
+
     const product = await db.product.create({
       data: {
         name,
         slug,
         description,
+        shortDescription: shortDescription || null,
+        material: material || null,
+        fit: fit || null,
+        careInstructions: careInstructions || null,
+        countryOfOrigin: countryOfOrigin || null,
         basePrice: Number(basePrice),
         discountPrice: discountPrice ? Number(discountPrice) : null,
         categoryId,
@@ -204,6 +217,11 @@ export const updateProduct = asyncHandler(
       name,
       slug,
       description,
+      shortDescription,
+      material,
+      fit,
+      careInstructions,
+      countryOfOrigin,
       basePrice,
       discountPrice,
       categoryId,
@@ -221,12 +239,22 @@ export const updateProduct = asyncHandler(
       }
     }
 
+    if (categoryId) {
+      const category = await db.category.findUnique({ where: { id: categoryId } });
+      if (!category) throw new ApiError(400, 'Choose a valid category from the category list');
+    }
+
     const product = await db.product.update({
       where: { id },
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(slug !== undefined ? { slug } : {}),
         ...(description !== undefined ? { description } : {}),
+        ...(shortDescription !== undefined ? { shortDescription: shortDescription || null } : {}),
+        ...(material !== undefined ? { material: material || null } : {}),
+        ...(fit !== undefined ? { fit: fit || null } : {}),
+        ...(careInstructions !== undefined ? { careInstructions: careInstructions || null } : {}),
+        ...(countryOfOrigin !== undefined ? { countryOfOrigin: countryOfOrigin || null } : {}),
         ...(basePrice !== undefined ? { basePrice: Number(basePrice) } : {}),
         ...(discountPrice !== undefined ? { discountPrice: discountPrice ? Number(discountPrice) : null } : {}),
         ...(categoryId !== undefined ? { categoryId } : {}),

@@ -19,6 +19,7 @@ import orderRoutes from "./routes/order.routes";
 import adminRoutes from "./routes/admin.routes";
 import settingsRoutes from "./routes/settings.routes";
 import contactRoutes from "./routes/contact.routes";
+import uploadRoutes from "./routes/upload.routes";
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/settings", settingsRoutes);
+app.use("/api/admin/uploads", uploadRoutes);
 app.use("/api/contact", contactRoutes);
 
 app.use(notFoundHandler);

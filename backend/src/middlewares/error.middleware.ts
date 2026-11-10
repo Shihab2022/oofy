@@ -2,7 +2,7 @@ import type { ErrorRequestHandler, Request, Response, NextFunction } from 'expre
 import { ApiError } from '../utils/ApiError';
 
 export const errorMiddleware: ErrorRequestHandler = (
-  err: Error | ApiError,
+  err: Error | (ApiError & { issues?: unknown }),
   _req: Request,
   res: Response,
   _next: NextFunction
@@ -27,6 +27,7 @@ export const errorMiddleware: ErrorRequestHandler = (
     statusCode,
     message,
     ...(stack ? { stack } : {}),
+    ...('issues' in err && err.issues ? { issues: err.issues } : {}),
   });
 };
 

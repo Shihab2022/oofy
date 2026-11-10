@@ -39,6 +39,7 @@ type Product = {
   isPublished: boolean;
   isFeatured?: boolean;
   category?: { name: string };
+  categoryId?: string;
   images: { url: string }[];
   variants: Variant[];
 };
@@ -52,6 +53,7 @@ type Order = {
   createdAt: string;
   items: unknown[];
 };
+type Category = { id: string; name: string; slug: string; description?: string | null; isActive: boolean; _count?: { products: number } };
 
 const demoProducts: Product[] = [
   {
@@ -96,6 +98,7 @@ export default function AdminPage() {
   const [active, setActive] = useState("Overview");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [showEditor, setShowEditor] = useState(false);
@@ -103,11 +106,13 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
 
   const request = async (path: string, init: RequestInit = {}) => {
+    const isForm =
+      typeof FormData !== "undefined" && init.body instanceof FormData;
     const res = await fetch(`${API}${path}`, {
       ...init,
       credentials: "include",
       headers: {
-        "Content-Type": "application/json",
+        ...(isForm ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
@@ -121,12 +126,14 @@ export default function AdminPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [productData, orderData] = await Promise.all([
+      const [productData, orderData, categoryData] = await Promise.all([
         request("/admin/products"),
         request("/orders/admin?limit=50"),
+        request("/categories/admin/all"),
       ]);
       setProducts(productData.data || []);
       setOrders(orderData.data?.orders || []);
+      setCategories(categoryData.data || []);
     } catch (e) {
       setProducts(demoProducts);
       setNotice(
@@ -170,6 +177,7 @@ export default function AdminPage() {
     ["Orders", FiShoppingBag],
     ["Inventory", FiBox],
     ["Customers", FiUsers],
+    ["Categories", FiSliders],
     ["Store settings", FiSettings],
   ];
   const pageTitle = active === "Overview" ? "Good morning, OOFY." : active;
@@ -292,6 +300,7 @@ export default function AdminPage() {
           )}
           {active === "Inventory" && <Inventory products={products} />}
           {active === "Customers" && <Customers orders={orders} />}
+        {active === "Categories" && <Categories categories={categories} request={request} refresh={loadData} setNotice={setNotice} />}
           {active === "Store settings" && (
             <Settings request={request} setNotice={setNotice} />
           )}
@@ -795,6 +804,20 @@ function Customers({ orders }: { orders: Order[] }) {
     </section>
   );
 }
+function Categories({ categories, request, refresh, setNotice }: { categories: Category[]; request: any; refresh: () => void; setNotice: (value: string) => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const create = async (e: FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    try { await request("/categories/admin", { method: "POST", body: JSON.stringify({ name, slug, description, isActive: true }) }); setName(""); setDescription(""); setNotice("Category created."); refresh(); }
+    catch (error: any) { setNotice(error.message || "Could not create category."); }
+    finally { setSaving(false); }
+  };
+  const remove = async (category: Category) => { if (!confirm(`Delete ${category.name}? Products in this category must be moved first.`)) return; try { await request(`/categories/admin/${category.id}`, { method: "DELETE" }); setNotice("Category deleted."); refresh(); } catch (error: any) { setNotice(error.message || "Could not delete category."); } };
+  return <div className="grid gap-6 xl:grid-cols-[.8fr_1.2fr]"><form onSubmit={create} className="rounded-2xl border border-black/8 bg-white p-5"><h2 className="font-black tracking-[-.04em]">Create category</h2><p className="mt-1 text-xs text-ink/50">New categories become available in the product form automatically.</p><label className="mt-6 block text-xs font-bold uppercase tracking-wider">Name<input required value={name} onChange={e => setName(e.target.value)} className="mt-2 w-full rounded-xl border border-black/10 p-3 text-sm font-normal" placeholder="Hoodies" /></label><label className="mt-4 block text-xs font-bold uppercase tracking-wider">Description<textarea value={description} onChange={e => setDescription(e.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-black/10 p-3 text-sm font-normal" placeholder="Optional category description" /></label><button disabled={saving} className="mt-5 rounded-xl bg-ink px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">{saving ? "Creating…" : "Create category"}</button></form><section className="rounded-2xl border border-black/8 bg-white"><div className="border-b border-black/8 p-5"><h2 className="font-black tracking-[-.04em]">Categories</h2></div><div className="divide-y divide-black/5">{categories.map(category => <div key={category.id} className="flex items-center justify-between p-4"><div><p className="font-bold">{category.name}</p><p className="mt-1 text-xs text-ink/50">/{category.slug} · {category._count?.products || 0} product(s)</p></div><button onClick={() => remove(category)} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"><FiTrash2 /></button></div>)}{!categories.length && <Empty text="Create your first category." />}</div></section></div>;
+}
 function Settings({ request, setNotice }: any) {
   const [form, setForm] = useState({
     storeName: "OOFY",
@@ -875,20 +898,29 @@ function Settings({ request, setNotice }: any) {
   );
 }
 function ProductEditor({ product, request, close, saved }: any) {
+  const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState({
     name: product?.name || "",
     slug: product?.slug || "",
-    description: "",
+    description: product?.description || "",
+    shortDescription: product?.shortDescription || "",
+    material: product?.material || "",
+    fit: product?.fit || "",
+    careInstructions: product?.careInstructions || "",
+    countryOfOrigin: product?.countryOfOrigin || "Bangladesh",
     basePrice: product ? String(product.basePrice) : "",
     categoryId: product?.categoryId || "",
-    image: product?.images?.[0]?.url || "",
+    image: "",
     published: product?.isPublished ?? true,
     featured: product?.isFeatured ?? false,
     variants: product?.variants?.length
       ? product.variants
-      : [{ size: "M", color: "Black", stock: 0, sku: "" }],
+      : ["XS", "S", "M", "L", "XL", "XXL"].map((size) => ({ size, color: "Black", stock: 0, sku: "" })),
   });
   const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [images, setImages] = useState<{ url: string; alt?: string }[]>(product?.images || []);
+  useEffect(() => { request("/categories/admin/all").then((data: any) => setCategories(data.data || [])).catch((error: Error) => setError(error.message)); }, []);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -902,11 +934,16 @@ function ProductEditor({ product, request, close, saved }: any) {
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, ""),
       description: form.description,
+      shortDescription: form.shortDescription,
+      material: form.material,
+      fit: form.fit,
+      careInstructions: form.careInstructions,
+      countryOfOrigin: form.countryOfOrigin,
       basePrice: form.basePrice,
       categoryId: form.categoryId,
       isPublished: form.published,
       isFeatured: form.featured,
-      images: form.image ? [{ url: form.image }] : [],
+      images,
       variants: form.variants.map((v: Variant) => ({
         ...v,
         stock: Number(v.stock),
@@ -925,16 +962,27 @@ function ProductEditor({ product, request, close, saved }: any) {
       );
     }
   };
-  const readImage = (file?: File) => {
+  const uploadImage = async (file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/"))
       return setError("Please choose an image file.");
-    if (file.size > 4 * 1024 * 1024)
-      return setError("Image must be smaller than 4 MB.");
-    const reader = new FileReader();
-    reader.onload = () =>
-      setForm((current) => ({ ...current, image: String(reader.result) }));
-    reader.readAsDataURL(file);
+    if (file.size > 5 * 1024 * 1024)
+      return setError("Image must be smaller than 5 MB.");
+    setUploading(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const data = await request("/admin/uploads/image", {
+        method: "POST",
+        body,
+      });
+      setImages((current) => [...current, { url: data.data.url }]);
+    } catch (e: any) {
+      setError(e.message || "Cloudinary upload failed.");
+    } finally {
+      setUploading(false);
+    }
   };
   return (
     <div className="fixed inset-0 z-30 overflow-y-auto bg-ink/45 p-4 md:p-8">
@@ -990,43 +1038,43 @@ function ProductEditor({ product, request, close, saved }: any) {
               placeholder="1250"
             />
           </label>
-          <label className="text-xs font-bold uppercase tracking-wider">
-            Category ID
-            <input
-              required
-              value={form.categoryId}
-              onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-              className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal"
-              placeholder="UUID from Categories"
-            />
+          <label className="text-xs font-bold uppercase tracking-wider">Category
+            <select required value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal"><option value="">Choose a category</option>{categories.filter(c => c.isActive).map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
           </label>
           <div className="md:col-span-2">
             <label className="text-xs font-bold uppercase tracking-wider">
               Product image URL
               <input
-                value={
-                  form.image.startsWith("data:")
-                    ? "Uploaded image ready"
-                    : form.image
-                }
+                value={form.image}
                 onChange={(e) => setForm({ ...form, image: e.target.value })}
                 className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal"
                 placeholder="https://..."
               />
             </label>
+            <button type="button" onClick={() => { if (form.image.trim()) { setImages([...images, { url: form.image.trim() }]); setForm({ ...form, image: "" }); } }} className="mt-2 text-xs font-bold text-blue">Add image URL</button>
             <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-black/20 bg-white px-3 py-2 text-xs font-bold">
-              <FiPlus /> Upload image
+              <FiPlus /> {uploading ? "Uploading…" : "Upload to Cloudinary"}
               <input
+                disabled={uploading}
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => readImage(e.target.files?.[0])}
+                onChange={(e) => uploadImage(e.target.files?.[0])}
               />
             </label>
             <span className="ml-3 text-xs text-ink/45">
-              JPG, PNG, or WebP up to 4 MB
+              JPG, PNG, or WebP up to 5 MB
             </span>
+            <div className="mt-3 grid grid-cols-4 gap-2">{images.map((image, index) => <div className="relative" key={`${image.url}-${index}`}><img src={image.url} alt="Product" className="h-24 w-full rounded-lg object-cover"/><span className="absolute left-1 top-1 rounded bg-ink px-1 text-[9px] font-bold text-white">{index === 0 ? "CARD" : index + 1}</span><button type="button" onClick={() => setImages(images.filter((_, imageIndex) => imageIndex !== index))} className="absolute right-1 top-1 rounded bg-white p-1 text-rose-600"><FiX /></button></div>)}</div>
           </div>
+          <label className="md:col-span-2 text-xs font-bold uppercase tracking-wider">
+            Short product summary
+            <input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} maxLength={180} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal" placeholder="A concise line shown on collection cards" />
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wider">Material<input value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal" placeholder="240 GSM cotton" /></label>
+          <label className="text-xs font-bold uppercase tracking-wider">Fit<input value={form.fit} onChange={(e) => setForm({ ...form, fit: e.target.value })} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal" placeholder="Oversized fit" /></label>
+          <label className="text-xs font-bold uppercase tracking-wider">Country of origin<input value={form.countryOfOrigin} onChange={(e) => setForm({ ...form, countryOfOrigin: e.target.value })} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal" /></label>
+          <label className="text-xs font-bold uppercase tracking-wider">Care instructions<input value={form.careInstructions} onChange={(e) => setForm({ ...form, careInstructions: e.target.value })} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal" placeholder="Cold wash inside out" /></label>
           <label className="md:col-span-2 text-xs font-bold uppercase tracking-wider">
             Description
             <textarea

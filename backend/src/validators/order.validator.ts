@@ -6,12 +6,12 @@ export const orderCreateSchema = z.object({
   body: z.object({
     customerName: z.string().min(2, 'Full name is required'),
     customerPhone: z.string().regex(phoneRegex, 'Enter a valid Bangladesh phone number'),
-    customerEmail: z.string().email('Invalid email').optional().nullable(),
+    customerEmail: z.string().email('Enter a valid email address'),
     address: z.string().min(5, 'Full delivery address is required'),
     district: z.string().min(1, 'District is required'),
     area: z.string().min(1, 'Area / Upazila is required'),
     orderNotes: z.string().optional().nullable(),
-    paymentMethod: z.string().default('COD'),
+    paymentMethod: z.literal('COD').default('COD'),
     items: z
       .array(
         z.object({

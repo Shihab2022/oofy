@@ -25,6 +25,9 @@ export const createOrder = asyncHandler(
     } = req.body;
 
     const settings = await db.storeSettings.findFirst();
+    if (settings && !settings.codEnabled) {
+      throw new ApiError(400, 'Cash on delivery is currently unavailable');
+    }
     const deliveryCharge = settings?.deliveryCharge ?? 60;
 
     // Validate stock and compute totals inside a transaction
@@ -105,13 +108,19 @@ export const createOrder = asyncHandler(
           subtotal: subtotal as any,
           deliveryCharge: Number(deliveryCharge) as any,
           totalAmount: totalAmount as any,
-          paymentMethod,
+          paymentMethod: 'COD',
           paymentStatus: 'PENDING',
           items: {
             create: orderItemsInput,
           },
         },
         include: { items: { include: { variant: true } } },
+      });
+
+      await tx.customer.upsert({
+        where: { phone: customerPhone },
+        update: { name: customerName, ...(customerEmail ? { email: customerEmail } : {}) },
+        create: { name: customerName, phone: customerPhone, email: customerEmail || null },
       });
 
       return { order, totalAmount, subtotal };
