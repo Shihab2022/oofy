@@ -1,0 +1,5 @@
+"use client";
+import { FiMenu, FiShoppingBag, FiX } from "react-icons/fi";
+type Props = { cartCount?: number; onCart?: () => void; back?: boolean };
+export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) { return <><div className="announcement">Free delivery in Bangladesh on orders over ৳2,000</div><header className="store-header"><div className="header-side">{back ? <a href="/" className="header-link">← Shop</a> : <><button className="mobile-menu" aria-label="Menu"><FiMenu /></button><a href="#collection" className="header-link desktop-link">Shop</a></>}</div><a href="/" className="wordmark" aria-label="OOFY home">OOFY<span>®</span></a><div className="header-side header-side-right">{onCart ? <button onClick={onCart} className="header-link bag-button"><FiShoppingBag /> Bag ({cartCount})</button> : <a href="/#collection" className="header-link">Collection</a>}</div></header></>; }
+export function CloseButton({ onClick }: { onClick: () => void }) { return <button aria-label="Close" onClick={onClick} className="icon-button"><FiX /></button>; }
