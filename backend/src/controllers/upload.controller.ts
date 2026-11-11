@@ -28,7 +28,7 @@ export const uploadProductImage = asyncHandler(
     const form = new FormData();
     form.append(
       "file",
-      new Blob([req.file.buffer], { type: req.file.mimetype }),
+      new Blob([Uint8Array.from(req.file.buffer)], { type: req.file.mimetype }),
       req.file.originalname,
     );
     form.append("api_key", env.CLOUDINARY_API_KEY);

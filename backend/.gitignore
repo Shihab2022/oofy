@@ -5,3 +5,4 @@ dist/
 *.log
 upload/
 prisma/migrations/*.lock
+.vercel
