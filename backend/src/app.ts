@@ -14,7 +14,7 @@ import contactRoutes from "./routes/contact.routes";
 import uploadRoutes from "./routes/upload.routes";
 const app = express();
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || true, credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));

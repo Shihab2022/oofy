@@ -1,10 +1,56 @@
-export type Variant = { id: string; size: string; color?: string | null; stock: number; price?: string | number | null };
-export type Product = {
-  id: string; name: string; slug: string; description?: string; shortDescription?: string;
-  material?: string; fit?: string; careInstructions?: string; countryOfOrigin?: string;
-  basePrice: string | number; discountPrice?: string | number | null;
-  images: { url: string; alt?: string }[]; variants: Variant[];
+export type Variant = {
+  id: string;
+  size: string;
+  color?: string | null;
+  stock: number;
+  price?: string | number | null;
+  sku?: string;
 };
-export type CartItem = { product: Product; variant: Variant; quantity: number };
-export const money = (value: string | number) => `৳ ${Number(value).toLocaleString("en-BD")}`;
-export const productPrice = (product: Product, variant?: Variant) => variant?.price ?? product.discountPrice ?? product.basePrice;
+
+export type Category = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  isActive?: boolean;
+  _count?: {
+    products: number;
+  };
+};
+
+export type Product = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  shortDescription?: string;
+  material?: string;
+  fit?: string;
+  careInstructions?: string;
+  countryOfOrigin?: string;
+  basePrice: string | number;
+  discountPrice?: string | number | null;
+  isFeatured?: boolean;
+  isNewArrival?: boolean;
+  isPublished?: boolean;
+  categoryId?: string;
+  category?: Category | null;
+  images: { id?: string; url: string; alt?: string; position?: number }[];
+  variants: Variant[];
+};
+
+export type CartItem = {
+  product: Product;
+  variant: Variant;
+  quantity: number;
+};
+
+export const money = (value: string | number) => {
+  const num = Number(value);
+  if (isNaN(num)) return "৳ 0";
+  return `৳ ${num.toLocaleString("en-BD")}`;
+};
+
+export const productPrice = (product: Product, variant?: Variant) => {
+  return variant?.price ?? product.discountPrice ?? product.basePrice;
+};
