@@ -11,6 +11,7 @@ import {
   FiGrid,
   FiLogOut,
   FiPackage,
+  FiPercent,
   FiPlus,
   FiSearch,
   FiSettings,
@@ -36,8 +37,16 @@ type Product = {
   name: string;
   slug: string;
   basePrice: string | number;
+  discountPrice?: string | number | null;
   isPublished: boolean;
   isFeatured?: boolean;
+  isFreeDelivery?: boolean;
+  careInstructions?: string | null;
+  description?: string;
+  shortDescription?: string | null;
+  material?: string | null;
+  fit?: string | null;
+  countryOfOrigin?: string | null;
   category?: { name: string };
   categoryId?: string;
   images: { url: string }[];
@@ -296,6 +305,9 @@ export default function AdminPage() {
               }}
               onDelete={removeProduct}
               loading={loading}
+              request={request}
+              refresh={loadData}
+              setNotice={setNotice}
             />
           )}
           {active === "Orders" && (
@@ -559,91 +571,216 @@ function Products({
   onEdit,
   onDelete,
   loading,
+  request,
+  refresh,
+  setNotice,
 }: any) {
+  const [showPromoModal, setShowPromoModal] = useState(false);
+  const [bulkDiscountPct, setBulkDiscountPct] = useState("15");
+  const [promoBusy, setPromoBusy] = useState(false);
+
+  const applyBulkDiscount = async () => {
+    const pct = Number(bulkDiscountPct);
+    if (isNaN(pct) || pct <= 0 || pct >= 100) {
+      alert("Please enter a discount percentage between 1% and 99%");
+      return;
+    }
+    setPromoBusy(true);
+    try {
+      const res = await request("/admin/products/bulk-discount", {
+        method: "POST",
+        body: JSON.stringify({ discountPercent: pct }),
+      });
+      setNotice(res.message || `Applied ${pct}% discount to all products!`);
+      if (refresh) await refresh();
+      setShowPromoModal(false);
+    } catch (e: any) {
+      alert(e.message || "Failed to apply bulk discount");
+    } finally {
+      setPromoBusy(false);
+    }
+  };
+
+  const clearAllDiscounts = async () => {
+    if (!confirm("Are you sure you want to remove discounts from all products?")) return;
+    setPromoBusy(true);
+    try {
+      const res = await request("/admin/products/bulk-discount", {
+        method: "POST",
+        body: JSON.stringify({ clearAll: true }),
+      });
+      setNotice(res.message || "All discounts removed.");
+      if (refresh) await refresh();
+      setShowPromoModal(false);
+    } catch (e: any) {
+      alert(e.message || "Failed to clear discounts");
+    } finally {
+      setPromoBusy(false);
+    }
+  };
+
+  const toggleBulkFreeDelivery = async (enable: boolean) => {
+    const actionText = enable ? "enable free delivery on ALL products" : "disable free delivery on ALL products";
+    if (!confirm(`Are you sure you want to ${actionText}?`)) return;
+    setPromoBusy(true);
+    try {
+      const res = await request("/admin/products/bulk-free-delivery", {
+        method: "POST",
+        body: JSON.stringify(enable ? { enableAll: true } : { clearAll: true }),
+      });
+      setNotice(res.message || (enable ? "Free delivery enabled on all products." : "Free delivery removed."));
+      if (refresh) await refresh();
+      setShowPromoModal(false);
+    } catch (e: any) {
+      alert(e.message || "Failed to update free delivery");
+    } finally {
+      setPromoBusy(false);
+    }
+  };
+
   return (
     <section className="rounded-2xl border border-black/8 bg-white">
-      <div className="flex flex-col justify-between gap-4 border-b border-black/8 p-5 md:flex-row">
+      <div className="flex flex-col justify-between gap-4 border-b border-black/8 p-5 md:flex-row md:items-center">
         <div>
           <h2 className="font-black tracking-[-.04em]">Catalog</h2>
           <p className="mt-1 text-xs text-ink/50">
-            Products, images, pricing, and visibility.
+            Products, images, pricing, discounts, and delivery rules.
           </p>
         </div>
-        <label className="flex items-center gap-2 rounded-xl border border-black/10 px-3 py-2 text-ink/40">
-          <FiSearch />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products"
-            className="w-full text-sm outline-none"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowPromoModal(true)}
+            className="flex items-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-black/80 transition-all"
+          >
+            <FiPercent className="text-sm text-lime" />
+            Discounts & Free Delivery
+          </button>
+          <label className="flex items-center gap-2 rounded-xl border border-black/10 px-3 py-2 text-ink/40 bg-white">
+            <FiSearch />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products"
+              className="w-full text-sm outline-none"
+            />
+          </label>
+        </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[700px] text-left">
+        <table className="w-full min-w-[760px] text-left">
           <thead className="bg-[#f7f8f6] text-[10px] uppercase tracking-wider text-ink/45">
             <tr>
               <th className="p-4">Product</th>
               <th>Category</th>
-              <th>Price</th>
+              <th>Price & Discount</th>
+              <th>Delivery</th>
               <th>Stock</th>
               <th>Status</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {products.map((p: Product) => (
-              <tr key={p.id} className="border-t border-black/5 text-sm">
-                <td className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-11 w-10 overflow-hidden rounded-lg bg-black/5">
-                      {p.images?.[0] && (
-                        <img
-                          src={p.images[0].url}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      )}
+            {products.map((p: Product) => {
+              const hasDiscount =
+                p.discountPrice &&
+                Number(p.discountPrice) < Number(p.basePrice);
+              const discountPct = hasDiscount
+                ? Math.round(
+                    ((Number(p.basePrice) - Number(p.discountPrice)) /
+                      Number(p.basePrice)) *
+                      100
+                  )
+                : 0;
+              const isFreeDelivery =
+                p.isFreeDelivery ||
+                p.careInstructions?.includes("[FREE_DELIVERY]") ||
+                p.description?.includes("[FREE_DELIVERY]");
+
+              return (
+                <tr key={p.id} className="border-t border-black/5 text-sm hover:bg-black/[0.015]">
+                  <td className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-11 w-10 overflow-hidden rounded-lg bg-black/5 flex-shrink-0">
+                        {p.images?.[0] && (
+                          <img
+                            src={p.images[0].url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-bold">{p.name}</p>
+                        <p className="text-xs text-ink/45">/{p.slug}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold">{p.name}</p>
-                      <p className="text-xs text-ink/45">/{p.slug}</p>
+                  </td>
+                  <td className="text-ink/60">
+                    {p.category?.name || "Uncategorized"}
+                  </td>
+                  <td>
+                    {hasDiscount ? (
+                      <div>
+                        <span className="font-black text-rose-600">
+                          {money(p.discountPrice!)}
+                        </span>
+                        <span className="ml-1.5 text-xs text-ink/40 line-through">
+                          {money(p.basePrice)}
+                        </span>
+                        <span className="ml-2 inline-block rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-black text-rose-700">
+                          -{discountPct}%
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="font-bold">{money(p.basePrice)}</span>
+                    )}
+                  </td>
+                  <td>
+                    {isFreeDelivery ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase text-emerald-800">
+                        <FiTruck className="text-xs" /> Free Delivery
+                      </span>
+                    ) : (
+                      <span className="text-xs text-ink/40">Standard</span>
+                    )}
+                  </td>
+                  <td>{p.variants.reduce((n, v) => n + Number(v.stock), 0)}</td>
+                  <td>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
+                        p.isPublished
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-stone-100 text-stone-600"
+                      }`}
+                    >
+                      {p.isPublished ? "Live" : "Draft"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onEdit(p)}
+                        className="rounded-lg p-2 hover:bg-black/5"
+                        title="Edit product"
+                      >
+                        <FiEdit2 />
+                      </button>
+                      <button
+                        onClick={() => onDelete(p.id)}
+                        className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
+                        title="Delete product"
+                      >
+                        <FiTrash2 />
+                      </button>
                     </div>
-                  </div>
-                </td>
-                <td className="text-ink/60">
-                  {p.category?.name || "Uncategorized"}
-                </td>
-                <td className="font-bold">{money(p.basePrice)}</td>
-                <td>{p.variants.reduce((n, v) => n + Number(v.stock), 0)}</td>
-                <td>
-                  <span
-                    className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${p.isPublished ? "bg-emerald-100 text-emerald-700" : "bg-stone-100 text-stone-600"}`}
-                  >
-                    {p.isPublished ? "Live" : "Draft"}
-                  </span>
-                </td>
-                <td>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => onEdit(p)}
-                      className="rounded-lg p-2 hover:bg-black/5"
-                    >
-                      <FiEdit2 />
-                    </button>
-                    <button
-                      onClick={() => onDelete(p.id)}
-                      className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
-                    >
-                      <FiTrash2 />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </tr>
+              );
+            })}
             {!loading && !products.length && (
               <tr>
-                <td colSpan={6} className="p-5">
+                <td colSpan={7} className="p-5">
                   <Empty text="No products match your search." />
                 </td>
               </tr>
@@ -651,6 +788,138 @@ function Products({
           </tbody>
         </table>
       </div>
+
+      {/* Promotions & Bulk Controls Modal */}
+      {showPromoModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-black/8 pb-4">
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-ink flex items-center gap-2">
+                  <FiPercent className="text-rose-500" />
+                  Storewide Promotions & Delivery
+                </h3>
+                <p className="mt-1 text-xs text-ink/60">
+                  Manage sitewide discounts or toggle free delivery across all products in one click.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPromoModal(false)}
+                className="rounded-lg p-1.5 text-ink/50 hover:bg-black/5"
+              >
+                <FiX className="text-lg" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-6">
+              {/* Section 1: Bulk Discount */}
+              <div className="rounded-xl border border-black/8 bg-[#fbfbf9] p-4">
+                <h4 className="text-xs font-black uppercase tracking-wider text-ink flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+                  Sitewide Discount (All Products)
+                </h4>
+                <p className="mt-1 text-xs text-ink/60">
+                  Applies a percentage discount calculated from each product&apos;s base price.
+                </p>
+
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="90"
+                      value={bulkDiscountPct}
+                      onChange={(e) => setBulkDiscountPct(e.target.value)}
+                      className="w-full rounded-xl border border-black/15 bg-white px-3 py-2.5 text-sm font-bold text-ink outline-none focus:border-ink"
+                      placeholder="e.g. 20"
+                    />
+                    <span className="absolute right-3 top-2.5 text-sm font-bold text-ink/40">%</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={promoBusy}
+                    onClick={applyBulkDiscount}
+                    className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    {promoBusy ? "Applying…" : "Apply to All"}
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-ink/40 mr-1">Presets:</span>
+                  {[10, 15, 20, 25, 30, 50].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setBulkDiscountPct(String(pct))}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-bold transition-all ${
+                        bulkDiscountPct === String(pct)
+                          ? "border-rose-600 bg-rose-50 text-rose-700"
+                          : "border-black/10 bg-white text-ink/70 hover:bg-black/5"
+                      }`}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-black/8 flex justify-end">
+                  <button
+                    type="button"
+                    disabled={promoBusy}
+                    onClick={clearAllDiscounts}
+                    className="text-xs font-bold text-rose-600 hover:underline"
+                  >
+                    Remove Discounts from All Products
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 2: Bulk Free Delivery */}
+              <div className="rounded-xl border border-black/8 bg-[#fbfbf9] p-4">
+                <h4 className="text-xs font-black uppercase tracking-wider text-ink flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  Free Delivery on All Products
+                </h4>
+                <p className="mt-1 text-xs text-ink/60">
+                  Marks all products with Free Delivery or removes the free delivery tag.
+                </p>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={promoBusy}
+                    onClick={() => toggleBulkFreeDelivery(true)}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <FiTruck /> Enable on All
+                  </button>
+                  <button
+                    type="button"
+                    disabled={promoBusy}
+                    onClick={() => toggleBulkFreeDelivery(false)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-black/15 bg-white py-3 text-xs font-bold uppercase tracking-wider text-ink/70 hover:bg-black/5 disabled:opacity-50"
+                  >
+                    Disable on All
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPromoModal(false)}
+                className="rounded-xl border border-black/15 px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink hover:bg-black/5"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -908,6 +1177,32 @@ function Settings({ request, setNotice }: any) {
           </label>
         ))}
       </div>
+
+      {/* Storewide Free Delivery Switch */}
+      <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.deliveryCharge === "0" || form.freeShippingThreshold === "0"}
+            onChange={(e) => {
+              if (e.target.checked) {
+                setForm({ ...form, deliveryCharge: "0", freeShippingThreshold: "0" });
+              } else {
+                setForm({ ...form, deliveryCharge: "60", freeShippingThreshold: "2000" });
+              }
+            }}
+            className="h-4 w-4 rounded accent-emerald-600 cursor-pointer"
+          />
+          <div>
+            <span className="text-sm font-bold text-emerald-950 block">
+              Free Delivery on All Orders (Storewide)
+            </span>
+            <span className="text-xs text-emerald-800">
+              When enabled, shipping is ৳0 on all orders across all products nationwide.
+            </span>
+          </div>
+        </label>
+      </div>
       <label className="mt-5 flex items-center gap-3 rounded-xl bg-[#f7f8f6] p-3 text-sm font-bold">
         <input
           type="checkbox"
@@ -931,9 +1226,17 @@ function ProductEditor({ product, request, close, saved }: any) {
     shortDescription: product?.shortDescription || "",
     material: product?.material || "",
     fit: product?.fit || "",
-    careInstructions: product?.careInstructions || "",
+    careInstructions: (product?.careInstructions || "")
+      .replace(/\[FREE_DELIVERY\]/g, "")
+      .trim(),
     countryOfOrigin: product?.countryOfOrigin || "Bangladesh",
     basePrice: product ? String(product.basePrice) : "",
+    discountPrice: product?.discountPrice ? String(product.discountPrice) : "",
+    isFreeDelivery: Boolean(
+      product?.isFreeDelivery ||
+        product?.careInstructions?.includes("[FREE_DELIVERY]") ||
+        product?.description?.includes("[FREE_DELIVERY]")
+    ),
     categoryId: product?.categoryId || "",
     image: "",
     published: product?.isPublished ?? true,
@@ -965,6 +1268,8 @@ function ProductEditor({ product, request, close, saved }: any) {
       careInstructions: form.careInstructions,
       countryOfOrigin: form.countryOfOrigin,
       basePrice: form.basePrice,
+      discountPrice: form.discountPrice.trim() ? form.discountPrice.trim() : null,
+      isFreeDelivery: form.isFreeDelivery,
       categoryId: form.categoryId,
       isPublished: form.published,
       isFeatured: form.featured,
@@ -1053,7 +1358,7 @@ function ProductEditor({ product, request, close, saved }: any) {
             />
           </label>
           <label className="text-xs font-bold uppercase tracking-wider">
-            Price (৳)
+            Regular Price (৳)
             <input
               required
               inputMode="decimal"
@@ -1063,8 +1368,66 @@ function ProductEditor({ product, request, close, saved }: any) {
               placeholder="1250"
             />
           </label>
-          <label className="text-xs font-bold uppercase tracking-wider">Category
-            <select required value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal"><option value="">Choose a category</option>{categories.filter(c => c.isActive).map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
+          <div className="flex flex-col">
+            <label className="text-xs font-bold uppercase tracking-wider flex items-center justify-between">
+              <span>Discount Price (৳)</span>
+              {form.basePrice && form.discountPrice && Number(form.discountPrice) < Number(form.basePrice) && (
+                <span className="text-[11px] font-black text-rose-600">
+                  {Math.round(((Number(form.basePrice) - Number(form.discountPrice)) / Number(form.basePrice)) * 100)}% OFF (Save ৳{Number(form.basePrice) - Number(form.discountPrice)})
+                </span>
+              )}
+            </label>
+            <input
+              inputMode="decimal"
+              value={form.discountPrice}
+              onChange={(e) => setForm({ ...form, discountPrice: e.target.value })}
+              className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal"
+              placeholder="e.g. 990 (Leave blank for no discount)"
+            />
+            {form.basePrice && Number(form.basePrice) > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {[10, 15, 20, 25, 30].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => {
+                      const disc = Math.round(Number(form.basePrice) * (1 - pct / 100));
+                      setForm({ ...form, discountPrice: String(disc) });
+                    }}
+                    className="rounded border border-black/10 bg-white px-2 py-0.5 text-[10px] font-bold text-ink hover:bg-black/5"
+                  >
+                    {pct}% OFF
+                  </button>
+                ))}
+                {form.discountPrice && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, discountPrice: "" })}
+                    className="rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 hover:bg-rose-100"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <label className="text-xs font-bold uppercase tracking-wider md:col-span-2">
+            Category
+            <select
+              required
+              value={form.categoryId}
+              onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+              className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3 py-3 text-sm font-normal"
+            >
+              <option value="">Choose a category</option>
+              {categories
+                .filter((c) => c.isActive)
+                .map((c) => (
+                  <option value={c.id} key={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
           </label>
           <div className="md:col-span-2">
             <label className="text-xs font-bold uppercase tracking-wider">
@@ -1172,7 +1535,7 @@ function ProductEditor({ product, request, close, saved }: any) {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-5 p-5">
-          <label className="flex items-center gap-2 text-sm font-bold">
+          <label className="flex items-center gap-2 text-sm font-bold cursor-pointer">
             <input
               type="checkbox"
               checked={form.published}
@@ -1182,13 +1545,25 @@ function ProductEditor({ product, request, close, saved }: any) {
             />{" "}
             Publish now
           </label>
-          <label className="flex items-center gap-2 text-sm font-bold">
+          <label className="flex items-center gap-2 text-sm font-bold cursor-pointer">
             <input
               type="checkbox"
               checked={form.featured}
               onChange={(e) => setForm({ ...form, featured: e.target.checked })}
             />{" "}
             Feature on home
+          </label>
+          <label className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-900 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.isFreeDelivery}
+              onChange={(e) =>
+                setForm({ ...form, isFreeDelivery: e.target.checked })
+              }
+              className="h-4 w-4 rounded accent-emerald-600"
+            />
+            <FiTruck className="text-sm text-emerald-600" />
+            <span>Free delivery on this product</span>
           </label>
           {error && <p className="text-sm text-rose-600">{error}</p>}
           <button className="ml-auto rounded-xl bg-ink px-5 py-3 text-xs font-bold uppercase tracking-wider text-white">

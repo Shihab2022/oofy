@@ -845,9 +845,9 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
                     </span>
                   </div>
 
-                  {shipping === 0 && subtotal >= 2000 && (
+                  {shipping === 0 && subtotal > 0 && (
                     <div className="free-unlocked-banner">
-                      ✦ Free Nationwide Delivery Unlocked
+                      ✦ Free Delivery Unlocked
                     </div>
                   )}
 

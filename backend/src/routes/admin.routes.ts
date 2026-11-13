@@ -4,6 +4,8 @@ import {
   updateProduct,
   deleteProduct,
   getAllProductsAdmin,
+  bulkDiscountProducts,
+  bulkFreeDeliveryProducts,
 } from '../controllers/product.controller';
 import { getDashboardStats } from '../controllers/dashboard.controller';
 import { authenticateAdmin, authorizeRole } from '../middlewares/auth.middleware';
@@ -17,6 +19,8 @@ router.use(authenticateAdmin, authorizeRole('ADMIN'));
 router.get('/dashboard', getDashboardStats);
 router.get('/products', getAllProductsAdmin);
 router.post('/products', validate(productCreateSchema), createProduct);
+router.post('/products/bulk-discount', bulkDiscountProducts);
+router.post('/products/bulk-free-delivery', bulkFreeDeliveryProducts);
 router.put('/products/:id', validate(productUpdateSchema), updateProduct);
 router.delete('/products/:id', deleteProduct);
 

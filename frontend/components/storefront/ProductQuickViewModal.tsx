@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Product, Variant, money, productPrice } from "./types";
+import { Product, Variant, money, productPrice, isFreeDeliveryProduct } from "./types";
 import { CloseButton } from "./StoreHeader";
 import { FiCheck, FiShoppingBag, FiArrowRight } from "react-icons/fi";
 
@@ -68,9 +68,14 @@ export function ProductQuickViewModal({
                 alt={currentImage.alt || product.name}
                 className="qv-main-img"
               />
-              {hasDiscount && (
-                <span className="qv-badge-sale">-{discountPercent}% OFF</span>
-              )}
+              <div className="qv-badges-wrap">
+                {isFreeDeliveryProduct(product) && (
+                  <span className="qv-badge-free">FREE DELIVERY</span>
+                )}
+                {hasDiscount && (
+                  <span className="qv-badge-sale">-{discountPercent}% OFF</span>
+                )}
+              </div>
             </div>
 
             {images.length > 1 && (

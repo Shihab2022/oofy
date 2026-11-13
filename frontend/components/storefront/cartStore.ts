@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { CartItem, Product, Variant, productPrice } from "./types";
+import { CartItem, Product, Variant, isFreeDeliveryProduct, productPrice } from "./types";
 
 const STORAGE_KEY = "oofy_cart";
+const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api")
+  .trim()
+  .replace(/^["']|["']$/g, "");
 
 export function getStoredCart(): CartItem[] {
   if (typeof window === "undefined") return [];
@@ -30,9 +33,33 @@ export function useCart() {
   const [bagOpen, setBagOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
+  const [deliverySettings, setDeliverySettings] = useState<{
+    deliveryCharge: number;
+    freeShippingThreshold: number | null;
+  }>({
+    deliveryCharge: 60,
+    freeShippingThreshold: 2000,
+  });
 
   useEffect(() => {
     setCart(getStoredCart());
+
+    // Load store delivery settings
+    fetch(`${API}/settings`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setDeliverySettings({
+            deliveryCharge: Number(res.data.deliveryCharge ?? 60),
+            freeShippingThreshold:
+              res.data.freeShippingThreshold !== null &&
+              res.data.freeShippingThreshold !== undefined
+                ? Number(res.data.freeShippingThreshold)
+                : 2000,
+          });
+        }
+      })
+      .catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<CartItem[]>;
@@ -56,50 +83,34 @@ export function useCart() {
       // Always get latest cart from localStorage to prevent stale state
       const current = getStoredCart();
 
-      // Check if this product is already in the bag
-      const existingIndex = current.findIndex(
-        (item) => item.product.id === product.id
-      );
+      // Find item matching both this product AND this specific variant (size + color)
+      const existingIndex = current.findIndex((item) => {
+        const isSameProduct = item.product.id === product.id;
+        const isSameVariant =
+          (variant.id && item.variant.id && item.variant.id === variant.id) ||
+          (item.variant.size === variant.size &&
+            (item.variant.color || "") === (variant.color || ""));
+        return isSameProduct && isSameVariant;
+      });
 
       let updated: CartItem[];
 
       if (existingIndex > -1) {
-        const existingItem = current[existingIndex];
-        const isSameVariant =
-          (variant.id && existingItem.variant.id && existingItem.variant.id === variant.id) ||
-          (existingItem.variant.size === variant.size &&
-            (existingItem.variant.color || "") === (variant.color || ""));
-
-        if (isSameVariant) {
-          // Same product and same size -> increment quantity
-          updated = current.map((item, idx) =>
-            idx === existingIndex
-              ? {
-                  ...item,
-                  quantity: Math.min(
-                    item.quantity + quantity,
-                    Math.max(variant.stock || 99, 1)
-                  ),
-                }
-              : item
-          );
-        } else {
-          // Same product but DIFFERENT size/variant (e.g. previously added L, now selected M)
-          // Update the product's variant to the newly selected size,
-          // and set initial quantity to requested quantity (default 1)
-          // instead of adding 2 or 3 items of the same product into the bag!
-          updated = current.map((item, idx) =>
-            idx === existingIndex
-              ? {
-                  product,
-                  variant,
-                  quantity: Math.min(quantity, Math.max(variant.stock || 99, 1)),
-                }
-              : item
-          );
-        }
+        // Same product AND exact same size -> increment quantity
+        updated = current.map((item, idx) =>
+          idx === existingIndex
+            ? {
+                ...item,
+                quantity: Math.min(
+                  item.quantity + quantity,
+                  Math.max(variant.stock || 99, 1)
+                ),
+              }
+            : item
+        );
       } else {
-        // Brand new product added to the bag
+        // New item: whether brand new product OR a different size (e.g. Size M when Size L is already in the bag)
+        // Initial quantity is strictly 1 (or requested quantity)
         updated = [
           ...current,
           {
@@ -160,7 +171,22 @@ export function useCart() {
     0
   );
 
-  const shipping = subtotal === 0 ? 0 : subtotal >= 2000 ? 0 : 60;
+  const hasFreeDelivery = cart.some((item) =>
+    isFreeDeliveryProduct(item.product)
+  );
+
+  const isStorewideFreeDelivery =
+    deliverySettings.deliveryCharge === 0 ||
+    (deliverySettings.freeShippingThreshold !== null &&
+      deliverySettings.freeShippingThreshold === 0) ||
+    (deliverySettings.freeShippingThreshold !== null &&
+      subtotal >= deliverySettings.freeShippingThreshold);
+
+  const shipping =
+    subtotal === 0 || hasFreeDelivery || isStorewideFreeDelivery
+      ? 0
+      : deliverySettings.deliveryCharge;
+
   const total = subtotal + shipping;
 
   return {
@@ -171,6 +197,8 @@ export function useCart() {
     setCheckoutOpen,
     orderSuccess,
     setOrderSuccess,
+    deliverySettings,
+    hasFreeDelivery,
     addToCart,
     updateQuantity,
     removeFromCart,

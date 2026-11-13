@@ -9,6 +9,18 @@ function toDecimal(value: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export function formatProduct(p: any) {
+  if (!p) return p;
+  return {
+    ...p,
+    isFreeDelivery: Boolean(
+      p.careInstructions?.includes('[FREE_DELIVERY]') ||
+      p.description?.includes('[FREE_DELIVERY]') ||
+      p.shortDescription?.includes('[FREE_DELIVERY]')
+    ),
+  };
+}
+
 export const getProducts = asyncHandler(
   async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
     const {
@@ -66,7 +78,7 @@ export const getProducts = asyncHandler(
     res.json({
       success: true,
       data: {
-        products,
+        products: products.map(formatProduct),
         pagination: { total, page: Number(page), limit: take, totalPages: Math.ceil(total / take) },
       },
     });
@@ -103,7 +115,7 @@ export const getProductBySlug = asyncHandler(
       },
     });
 
-    res.json({ success: true, data: { product, related } });
+    res.json({ success: true, data: { product: formatProduct(product), related: related.map(formatProduct) } });
   }
 );
 
@@ -118,7 +130,7 @@ export const getFeaturedProducts = asyncHandler(
         variants: { orderBy: { size: 'asc' } },
       },
     });
-    res.json({ success: true, data: products });
+    res.json({ success: true, data: products.map(formatProduct) });
   }
 );
 
@@ -133,7 +145,7 @@ export const getNewArrivals = asyncHandler(
         variants: { orderBy: { size: 'asc' } },
       },
     });
-    res.json({ success: true, data: products });
+    res.json({ success: true, data: products.map(formatProduct) });
   }
 );
 export const createProduct = asyncHandler(
@@ -153,9 +165,16 @@ export const createProduct = asyncHandler(
       isFeatured,
       isNewArrival,
       isPublished,
+      isFreeDelivery,
       images = [],
       variants = [],
     } = req.body;
+
+    let finalCare = careInstructions || '';
+    if (isFreeDelivery !== undefined) {
+      const baseCare = finalCare.replace(/\[FREE_DELIVERY\]/g, '').trim();
+      finalCare = isFreeDelivery ? (baseCare ? `[FREE_DELIVERY] ${baseCare}` : '[FREE_DELIVERY]') : baseCare;
+    }
 
     const existing = await db.product.findUnique({ where: { slug } });
     if (existing) {
@@ -173,7 +192,7 @@ export const createProduct = asyncHandler(
         shortDescription: shortDescription || null,
         material: material || null,
         fit: fit || null,
-        careInstructions: careInstructions || null,
+        careInstructions: finalCare || null,
         countryOfOrigin: countryOfOrigin || null,
         basePrice: Number(basePrice),
         discountPrice: discountPrice ? Number(discountPrice) : null,
@@ -201,7 +220,7 @@ export const createProduct = asyncHandler(
       include: { images: true, variants: true },
     });
 
-    res.status(201).json({ success: true, data: product });
+    res.status(201).json({ success: true, data: formatProduct(product) });
   }
 );
 
@@ -228,9 +247,17 @@ export const updateProduct = asyncHandler(
       isFeatured,
       isNewArrival,
       isPublished,
+      isFreeDelivery,
       images,
       variants,
     } = req.body;
+
+    let finalCare = careInstructions;
+    if (isFreeDelivery !== undefined) {
+      const existingCare = exists.careInstructions || '';
+      const baseCare = (careInstructions !== undefined ? (careInstructions || '') : existingCare).replace(/\[FREE_DELIVERY\]/g, '').trim();
+      finalCare = isFreeDelivery ? (baseCare ? `[FREE_DELIVERY] ${baseCare}` : '[FREE_DELIVERY]') : baseCare;
+    }
 
     if (slug && slug !== exists.slug) {
       const dup = await db.product.findUnique({ where: { slug } });
@@ -253,7 +280,7 @@ export const updateProduct = asyncHandler(
         ...(shortDescription !== undefined ? { shortDescription: shortDescription || null } : {}),
         ...(material !== undefined ? { material: material || null } : {}),
         ...(fit !== undefined ? { fit: fit || null } : {}),
-        ...(careInstructions !== undefined ? { careInstructions: careInstructions || null } : {}),
+        ...(finalCare !== undefined ? { careInstructions: finalCare || null } : {}),
         ...(countryOfOrigin !== undefined ? { countryOfOrigin: countryOfOrigin || null } : {}),
         ...(basePrice !== undefined ? { basePrice: Number(basePrice) } : {}),
         ...(discountPrice !== undefined ? { discountPrice: discountPrice ? Number(discountPrice) : null } : {}),
@@ -271,7 +298,7 @@ export const updateProduct = asyncHandler(
       include: { images: true, variants: true },
     });
 
-    res.json({ success: true, data: product });
+    res.json({ success: true, data: formatProduct(product) });
   }
 );
 
@@ -297,6 +324,70 @@ export const getAllProductsAdmin = asyncHandler(
         variants: { orderBy: { size: 'asc' } },
       },
     });
-    res.json({ success: true, data: products });
+    res.json({ success: true, data: products.map(formatProduct) });
+  }
+);
+
+export const bulkDiscountProducts = asyncHandler(
+  async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const { discountPercent, clearAll } = req.body;
+
+    if (clearAll) {
+      await db.product.updateMany({
+        data: {
+          discountPrice: null,
+        },
+      });
+      res.json({ success: true, message: 'All discounts removed from all products.' });
+      return;
+    }
+
+    const pct = Number(discountPercent);
+    if (isNaN(pct) || pct <= 0 || pct >= 100) {
+      throw new ApiError(400, 'Discount percentage must be between 1 and 99');
+    }
+
+    const allProducts = await db.product.findMany({ select: { id: true, basePrice: true } });
+    for (const prod of allProducts) {
+      const discounted = Math.round(Number(prod.basePrice) * (1 - pct / 100));
+      await db.product.update({
+        where: { id: prod.id },
+        data: { discountPrice: discounted },
+      });
+    }
+
+    res.json({ success: true, message: `Applied ${pct}% discount to all ${allProducts.length} products.` });
+  }
+);
+
+export const bulkFreeDeliveryProducts = asyncHandler(
+  async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const { enableAll, clearAll } = req.body;
+
+    const allProducts = await db.product.findMany({ select: { id: true, careInstructions: true } });
+    for (const prod of allProducts) {
+      const current = prod.careInstructions || '';
+      let updated = current;
+      if (clearAll) {
+        updated = current.replace(/\[FREE_DELIVERY\]/g, '').trim();
+      } else if (enableAll) {
+        if (!current.includes('[FREE_DELIVERY]')) {
+          updated = current ? `[FREE_DELIVERY] ${current}` : '[FREE_DELIVERY]';
+        }
+      }
+      if (updated !== current) {
+        await db.product.update({
+          where: { id: prod.id },
+          data: { careInstructions: updated || null },
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: clearAll
+        ? 'Free delivery disabled on all products.'
+        : 'Free delivery enabled on all products.',
+    });
   }
 );

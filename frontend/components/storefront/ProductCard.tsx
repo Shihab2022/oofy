@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Product, Variant, money, productPrice } from "./types";
+import { Product, Variant, money, productPrice, isFreeDeliveryProduct } from "./types";
 import { FiCheck, FiShoppingBag } from "react-icons/fi";
 
 type ProductCardProps = {
@@ -86,6 +86,9 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
 
           {/* Badges */}
           <div className="product-badges">
+            {isFreeDeliveryProduct(product) && (
+              <span className="badge badge-free-shipping">FREE DELIVERY</span>
+            )}
             {hasDiscount ? (
               <span className="badge badge-sale">-{discountPercent}%</span>
             ) : product.isNewArrival ? (

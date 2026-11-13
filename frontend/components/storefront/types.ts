@@ -33,6 +33,7 @@ export type Product = {
   isFeatured?: boolean;
   isNewArrival?: boolean;
   isPublished?: boolean;
+  isFreeDelivery?: boolean;
   categoryId?: string;
   category?: Category | null;
   images: { id?: string; url: string; alt?: string; position?: number }[];
@@ -53,4 +54,14 @@ export const money = (value: string | number) => {
 
 export const productPrice = (product: Product, variant?: Variant) => {
   return variant?.price ?? product.discountPrice ?? product.basePrice;
+};
+
+export const isFreeDeliveryProduct = (product?: Product | null): boolean => {
+  if (!product) return false;
+  return Boolean(
+    product.isFreeDelivery ||
+    product.careInstructions?.includes("[FREE_DELIVERY]") ||
+    product.description?.includes("[FREE_DELIVERY]") ||
+    product.shortDescription?.includes("[FREE_DELIVERY]")
+  );
 };

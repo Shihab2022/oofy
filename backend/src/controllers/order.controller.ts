@@ -91,10 +91,23 @@ export const createOrder = asyncHandler(
         }
       }
 
-      const isFreeShipping =
-        settings?.freeShippingThreshold !== null &&
-        settings?.freeShippingThreshold !== undefined &&
-        subtotal >= Number(settings.freeShippingThreshold);
+      const hasFreeDeliveryProduct = orderItemsData.some((item) => {
+        const prod = products.find((p) => p.id === item.productId);
+        return (
+          prod?.careInstructions?.includes('[FREE_DELIVERY]') ||
+          prod?.description?.includes('[FREE_DELIVERY]') ||
+          prod?.shortDescription?.includes('[FREE_DELIVERY]')
+        );
+      });
+
+      const isStorewideFreeDelivery =
+        Number(settings?.deliveryCharge ?? 60) === 0 ||
+        (settings?.freeShippingThreshold !== null &&
+          settings?.freeShippingThreshold !== undefined &&
+          (Number(settings.freeShippingThreshold) === 0 ||
+            subtotal >= Number(settings.freeShippingThreshold)));
+
+      const isFreeShipping = hasFreeDeliveryProduct || isStorewideFreeDelivery;
 
       const deliveryCharge = isFreeShipping ? 0 : Number(settings?.deliveryCharge ?? 60);
       const totalAmount = subtotal + Number(deliveryCharge);
