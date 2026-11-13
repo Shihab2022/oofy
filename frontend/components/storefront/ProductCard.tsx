@@ -86,6 +86,9 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
 
           {/* Badges */}
           <div className="product-badges">
+            {product.isFeatured && (
+              <span className="badge badge-featured">★ FEATURED</span>
+            )}
             {isFreeDeliveryProduct(product) && (
               <span className="badge badge-free-shipping">FREE DELIVERY</span>
             )}
@@ -93,8 +96,6 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
               <span className="badge badge-sale">-{discountPercent}%</span>
             ) : product.isNewArrival ? (
               <span className="badge badge-new">NEW DROP</span>
-            ) : product.isFeatured ? (
-              <span className="badge badge-featured">FEATURED</span>
             ) : null}
 
             {product.category?.name && (

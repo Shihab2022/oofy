@@ -11,6 +11,19 @@ function toDecimal(value: string | number | null | undefined): number | null {
 
 export function formatProduct(p: any) {
   if (!p) return p;
+  let isScheduled = false;
+  let scheduledAt: string | null = null;
+  const match = (p.careInstructions || '').match(/\[SCHEDULED:([^\]]+)\]/);
+  if (match) {
+    scheduledAt = match[1];
+    const targetTime = new Date(scheduledAt).getTime();
+    if (!isNaN(targetTime)) {
+      isScheduled = Date.now() < targetTime;
+    }
+  }
+
+  const isLive = p.isPublished || (scheduledAt ? Date.now() >= new Date(scheduledAt).getTime() : false);
+
   return {
     ...p,
     isFreeDelivery: Boolean(
@@ -18,6 +31,9 @@ export function formatProduct(p: any) {
       p.description?.includes('[FREE_DELIVERY]') ||
       p.shortDescription?.includes('[FREE_DELIVERY]')
     ),
+    isScheduled,
+    scheduledAt,
+    isCurrentlyLive: isLive,
   };
 }
 
@@ -166,6 +182,8 @@ export const createProduct = asyncHandler(
       isNewArrival,
       isPublished,
       isFreeDelivery,
+      scheduledAt,
+      publishNow,
       images = [],
       variants = [],
     } = req.body;
@@ -174,6 +192,19 @@ export const createProduct = asyncHandler(
     if (isFreeDelivery !== undefined) {
       const baseCare = finalCare.replace(/\[FREE_DELIVERY\]/g, '').trim();
       finalCare = isFreeDelivery ? (baseCare ? `[FREE_DELIVERY] ${baseCare}` : '[FREE_DELIVERY]') : baseCare;
+    }
+
+    let finalPublished = isPublished !== false;
+    if (scheduledAt) {
+      finalCare = finalCare.replace(/\[SCHEDULED:[^\]]+\]/g, '').trim();
+      finalCare = `${finalCare} [SCHEDULED:${scheduledAt}]`.trim();
+      const target = new Date(scheduledAt).getTime();
+      if (!isNaN(target) && target > Date.now()) {
+        finalPublished = false;
+      }
+    } else if (publishNow) {
+      finalCare = finalCare.replace(/\[SCHEDULED:[^\]]+\]/g, '').trim();
+      finalPublished = true;
     }
 
     const existing = await db.product.findUnique({ where: { slug } });
@@ -199,7 +230,7 @@ export const createProduct = asyncHandler(
         categoryId,
         isFeatured: isFeatured === true,
         isNewArrival: isNewArrival === true,
-        isPublished: isPublished !== false,
+        isPublished: finalPublished,
         images: {
           create: images.map((img: any, i: number) => ({
             url: img.url,
@@ -248,15 +279,35 @@ export const updateProduct = asyncHandler(
       isNewArrival,
       isPublished,
       isFreeDelivery,
+      scheduledAt,
+      publishNow,
       images,
       variants,
     } = req.body;
 
     let finalCare = careInstructions;
+    const existingCare = exists.careInstructions || '';
+    let currentCare = careInstructions !== undefined ? (careInstructions || '') : existingCare;
+
     if (isFreeDelivery !== undefined) {
-      const existingCare = exists.careInstructions || '';
-      const baseCare = (careInstructions !== undefined ? (careInstructions || '') : existingCare).replace(/\[FREE_DELIVERY\]/g, '').trim();
-      finalCare = isFreeDelivery ? (baseCare ? `[FREE_DELIVERY] ${baseCare}` : '[FREE_DELIVERY]') : baseCare;
+      const baseCare = currentCare.replace(/\[FREE_DELIVERY\]/g, '').trim();
+      currentCare = isFreeDelivery ? (baseCare ? `[FREE_DELIVERY] ${baseCare}` : '[FREE_DELIVERY]') : baseCare;
+      finalCare = currentCare;
+    }
+
+    let finalPublished = isPublished;
+    if (scheduledAt) {
+      currentCare = currentCare.replace(/\[SCHEDULED:[^\]]+\]/g, '').trim();
+      currentCare = `${currentCare} [SCHEDULED:${scheduledAt}]`.trim();
+      finalCare = currentCare;
+      const target = new Date(scheduledAt).getTime();
+      if (!isNaN(target) && target > Date.now()) {
+        finalPublished = false;
+      }
+    } else if (publishNow) {
+      currentCare = currentCare.replace(/\[SCHEDULED:[^\]]+\]/g, '').trim();
+      finalCare = currentCare;
+      finalPublished = true;
     }
 
     if (slug && slug !== exists.slug) {
@@ -287,7 +338,7 @@ export const updateProduct = asyncHandler(
         ...(categoryId !== undefined ? { categoryId } : {}),
         ...(isFeatured !== undefined ? { isFeatured } : {}),
         ...(isNewArrival !== undefined ? { isNewArrival } : {}),
-        ...(isPublished !== undefined ? { isPublished } : {}),
+        ...(finalPublished !== undefined ? { isPublished: finalPublished } : {}),
         ...(images !== undefined ? {
           images: { deleteMany: {}, create: images.map((img: any, i: number) => ({ url: img.url, alt: img.alt || name || exists.name, position: img.position ?? i })) }
         } : {}),
@@ -330,25 +381,54 @@ export const getAllProductsAdmin = asyncHandler(
 
 export const bulkDiscountProducts = asyncHandler(
   async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
-    const { discountPercent, clearAll } = req.body;
+    const { discountPercent, clearAll, productIds, discountPrice } = req.body;
+
+    const hasSpecificIds = Array.isArray(productIds) && productIds.length > 0;
 
     if (clearAll) {
-      await db.product.updateMany({
-        data: {
-          discountPrice: null,
-        },
-      });
-      res.json({ success: true, message: 'All discounts removed from all products.' });
+      if (hasSpecificIds) {
+        await db.product.updateMany({
+          where: { id: { in: productIds } },
+          data: { discountPrice: null },
+        });
+        res.json({ success: true, message: `Discounts removed from ${productIds.length} selected products.` });
+      } else {
+        await db.product.updateMany({
+          data: { discountPrice: null },
+        });
+        res.json({ success: true, message: 'All discounts removed from all products.' });
+      }
+      return;
+    }
+
+    if (discountPrice !== undefined && discountPrice !== null && discountPrice !== '') {
+      const fixed = Math.max(0, Number(discountPrice));
+      if (hasSpecificIds) {
+        await db.product.updateMany({
+          where: { id: { in: productIds } },
+          data: { discountPrice: fixed },
+        });
+        res.json({ success: true, message: `Set discount price ৳${fixed} for ${productIds.length} selected products.` });
+      } else {
+        await db.product.updateMany({
+          data: { discountPrice: fixed },
+        });
+        res.json({ success: true, message: `Set discount price ৳${fixed} for all products.` });
+      }
       return;
     }
 
     const pct = Number(discountPercent);
     if (isNaN(pct) || pct <= 0 || pct >= 100) {
-      throw new ApiError(400, 'Discount percentage must be between 1 and 99');
+      throw new ApiError(400, 'Discount percentage must be between 1% and 99%');
     }
 
-    const allProducts = await db.product.findMany({ select: { id: true, basePrice: true } });
-    for (const prod of allProducts) {
+    const targetProducts = await db.product.findMany({
+      where: hasSpecificIds ? { id: { in: productIds } } : {},
+      select: { id: true, basePrice: true },
+    });
+
+    for (const prod of targetProducts) {
       const discounted = Math.round(Number(prod.basePrice) * (1 - pct / 100));
       await db.product.update({
         where: { id: prod.id },
@@ -356,21 +436,33 @@ export const bulkDiscountProducts = asyncHandler(
       });
     }
 
-    res.json({ success: true, message: `Applied ${pct}% discount to all ${allProducts.length} products.` });
+    res.json({
+      success: true,
+      message: hasSpecificIds
+        ? `Applied ${pct}% discount to ${targetProducts.length} selected products.`
+        : `Applied ${pct}% discount to all ${targetProducts.length} products.`,
+    });
   }
 );
 
 export const bulkFreeDeliveryProducts = asyncHandler(
   async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
-    const { enableAll, clearAll } = req.body;
+    const { enableAll, clearAll, productIds, enable } = req.body;
 
-    const allProducts = await db.product.findMany({ select: { id: true, careInstructions: true } });
-    for (const prod of allProducts) {
+    const hasSpecificIds = Array.isArray(productIds) && productIds.length > 0;
+    const shouldEnable = enableAll === true || enable === true;
+
+    const targetProducts = await db.product.findMany({
+      where: hasSpecificIds ? { id: { in: productIds } } : {},
+      select: { id: true, careInstructions: true },
+    });
+
+    for (const prod of targetProducts) {
       const current = prod.careInstructions || '';
       let updated = current;
-      if (clearAll) {
+      if (clearAll || (!shouldEnable && hasSpecificIds)) {
         updated = current.replace(/\[FREE_DELIVERY\]/g, '').trim();
-      } else if (enableAll) {
+      } else if (shouldEnable) {
         if (!current.includes('[FREE_DELIVERY]')) {
           updated = current ? `[FREE_DELIVERY] ${current}` : '[FREE_DELIVERY]';
         }
@@ -385,9 +477,31 @@ export const bulkFreeDeliveryProducts = asyncHandler(
 
     res.json({
       success: true,
-      message: clearAll
-        ? 'Free delivery disabled on all products.'
-        : 'Free delivery enabled on all products.',
+      message: shouldEnable
+        ? hasSpecificIds
+          ? `Free delivery enabled for ${targetProducts.length} selected products.`
+          : 'Free delivery enabled for all products.'
+        : hasSpecificIds
+          ? `Free delivery removed from ${targetProducts.length} selected products.`
+          : 'Free delivery disabled on all products.',
+    });
+  }
+);
+
+export const toggleFeaturedProduct = asyncHandler(
+  async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const { id, isFeatured } = req.body;
+    if (!id) throw new ApiError(400, 'Product ID is required');
+
+    const product = await db.product.update({
+      where: { id },
+      data: { isFeatured: Boolean(isFeatured) },
+    });
+
+    res.json({
+      success: true,
+      message: product.isFeatured ? 'Product pinned to Home spotlight.' : 'Product unpinned from Home spotlight.',
+      data: formatProduct(product),
     });
   }
 );

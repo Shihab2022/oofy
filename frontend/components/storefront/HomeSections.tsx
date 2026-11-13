@@ -503,9 +503,10 @@ export function LookbookSection({
   products = [],
   onSelectProduct,
 }: LookbookSectionProps) {
-  const p1 = products[0];
-  const p2 = products[1] || products[0];
-  const p3 = products[2] || products[0];
+  const featured = products.filter((p) => p.isFeatured);
+  const p1 = featured[0] || products[0];
+  const p2 = featured[1] || products[1] || products[0];
+  const p3 = featured[2] || products[2] || products[0];
 
   const handleCardClick = (product?: Product) => {
     if (product && onSelectProduct) {
