@@ -134,7 +134,10 @@ export function ProductQuickViewModal({
                       key={v.id}
                       type="button"
                       disabled={v.stock === 0}
-                      onClick={() => setSelectedVariant(v)}
+                      onClick={() => {
+                        setSelectedVariant(v);
+                        setQuantity(1);
+                      }}
                       className={`qv-size-btn ${
                         selectedVariant?.id === v.id ? "selected" : ""
                       } ${v.stock === 0 ? "out" : ""}`}

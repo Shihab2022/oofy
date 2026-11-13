@@ -4585,3 +4585,101 @@
     grid-column: span 1;
   }
 }
+
+/* ==========================================================================
+   Cart Drawer Line Items & Actions
+   ========================================================================== */
+.cart-item-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.cart-item-details b {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
+}
+
+.cart-variant-tag {
+  font-size: 11.5px;
+  color: #6b7280;
+  margin: 4px 0 10px !important;
+}
+
+.cart-variant-tag span {
+  font-weight: 700;
+  color: #111827;
+}
+
+.cart-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+
+.cart-item-right strong {
+  font-size: 14px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.01em;
+}
+
+.cart-delete-btn {
+  background: transparent;
+  border: 0;
+  padding: 6px;
+  border-radius: 6px;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: all 0.15s ease;
+}
+
+.cart-delete-btn:hover {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.quantity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: #fff;
+  width: fit-content;
+  margin-top: auto;
+}
+
+.quantity button {
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  cursor: pointer;
+  font-size: 12px;
+  transition: color 0.15s ease;
+}
+
+.quantity button:hover {
+  color: #111827;
+}
+
+.quantity span {
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+

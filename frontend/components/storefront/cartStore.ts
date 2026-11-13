@@ -53,14 +53,27 @@ export function useCart() {
 
   const addToCart = useCallback(
     (product: Product, variant: Variant, quantity: number = 1) => {
-      setCart((current) => {
-        const index = current.findIndex(
-          (item) => item.product.id === product.id && item.variant.id === variant.id
-        );
-        let updated: CartItem[];
-        if (index > -1) {
+      // Always get latest cart from localStorage to prevent stale state
+      const current = getStoredCart();
+
+      // Check if this product is already in the bag
+      const existingIndex = current.findIndex(
+        (item) => item.product.id === product.id
+      );
+
+      let updated: CartItem[];
+
+      if (existingIndex > -1) {
+        const existingItem = current[existingIndex];
+        const isSameVariant =
+          (variant.id && existingItem.variant.id && existingItem.variant.id === variant.id) ||
+          (existingItem.variant.size === variant.size &&
+            (existingItem.variant.color || "") === (variant.color || ""));
+
+        if (isSameVariant) {
+          // Same product and same size -> increment quantity
           updated = current.map((item, idx) =>
-            idx === index
+            idx === existingIndex
               ? {
                   ...item,
                   quantity: Math.min(
@@ -71,57 +84,72 @@ export function useCart() {
               : item
           );
         } else {
-          updated = [
-            ...current,
-            {
-              product,
-              variant,
-              quantity: Math.min(quantity, Math.max(variant.stock || 99, 1)),
-            },
-          ];
+          // Same product but DIFFERENT size/variant (e.g. previously added L, now selected M)
+          // Update the product's variant to the newly selected size,
+          // and set initial quantity to requested quantity (default 1)
+          // instead of adding 2 or 3 items of the same product into the bag!
+          updated = current.map((item, idx) =>
+            idx === existingIndex
+              ? {
+                  product,
+                  variant,
+                  quantity: Math.min(quantity, Math.max(variant.stock || 99, 1)),
+                }
+              : item
+          );
         }
-        saveStoredCart(updated);
-        return updated;
-      });
+      } else {
+        // Brand new product added to the bag
+        updated = [
+          ...current,
+          {
+            product,
+            variant,
+            quantity: Math.min(quantity, Math.max(variant.stock || 99, 1)),
+          },
+        ];
+      }
+
+      // Persist to storage outside of React's state updater function
+      saveStoredCart(updated);
+      setCart(updated);
       setBagOpen(true);
     },
     []
   );
 
   const updateQuantity = useCallback((index: number, quantity: number) => {
-    setCart((current) => {
-      let updated: CartItem[];
-      if (quantity < 1) {
-        updated = current.filter((_, i) => i !== index);
-      } else {
-        updated = current.map((item, i) =>
-          i === index
-            ? {
-                ...item,
-                quantity: Math.min(
-                  quantity,
-                  Math.max(item.variant.stock || 99, 1)
-                ),
-              }
-            : item
-        );
-      }
-      saveStoredCart(updated);
-      return updated;
-    });
+    const current = getStoredCart();
+    let updated: CartItem[];
+    if (quantity < 1) {
+      updated = current.filter((_, i) => i !== index);
+    } else {
+      updated = current.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              quantity: Math.min(
+                quantity,
+                Math.max(item.variant.stock || 99, 1)
+              ),
+            }
+          : item
+      );
+    }
+    saveStoredCart(updated);
+    setCart(updated);
   }, []);
 
   const removeFromCart = useCallback((index: number) => {
-    setCart((current) => {
-      const updated = current.filter((_, i) => i !== index);
-      saveStoredCart(updated);
-      return updated;
-    });
+    const current = getStoredCart();
+    const updated = current.filter((_, i) => i !== index);
+    saveStoredCart(updated);
+    setCart(updated);
   }, []);
 
   const clearCart = useCallback(() => {
-    setCart([]);
     saveStoredCart([]);
+    setCart([]);
   }, []);
 
   const count = cart.reduce((n, item) => n + item.quantity, 0);
