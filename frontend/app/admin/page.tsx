@@ -52,6 +52,9 @@ type Order = {
   status: string;
   createdAt: string;
   items: unknown[];
+  paymentMethod?: string;
+  orderNotes?: string | null;
+  payments?: { method: string; transactionId?: string | null }[];
 };
 type Category = { id: string; name: string; slug: string; description?: string | null; isActive: boolean; _count?: { products: number } };
 
@@ -666,6 +669,7 @@ function Orders({ orders, updateStatus }: any) {
             <tr>
               <th className="p-4">Order</th>
               <th>Customer</th>
+              <th>Payment</th>
               <th>Date</th>
               <th>Total</th>
               <th>Status</th>
@@ -686,6 +690,27 @@ function Orders({ orders, updateStatus }: any) {
                   <span className="mt-1 block text-xs text-ink/45">
                     {o.customerPhone}
                   </span>
+                </td>
+                <td>
+                  <span
+                    className={`inline-block rounded px-2 py-0.5 text-[11px] font-bold ${
+                      o.paymentMethod === "BKASH"
+                        ? "bg-[#E2136E]/10 text-[#E2136E]"
+                        : o.paymentMethod === "NAGAD"
+                        ? "bg-[#F7941D]/10 text-[#F7941D]"
+                        : "bg-black/5 text-ink/75"
+                    }`}
+                  >
+                    {o.paymentMethod || "COD"}
+                  </span>
+                  {o.orderNotes && (
+                    <span
+                      className="mt-0.5 block max-w-[160px] truncate text-[10px] font-mono text-ink/50"
+                      title={o.orderNotes}
+                    >
+                      {o.orderNotes}
+                    </span>
+                  )}
                 </td>
                 <td className="text-ink/60">
                   {new Date(o.createdAt).toLocaleDateString()}
@@ -713,7 +738,7 @@ function Orders({ orders, updateStatus }: any) {
             ))}
             {!orders.length && (
               <tr>
-                <td colSpan={6} className="p-5">
+                <td colSpan={7} className="p-5">
                   <Empty text="No orders yet." />
                 </td>
               </tr>

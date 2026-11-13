@@ -21,14 +21,15 @@ export const createOrder = asyncHandler(
       area,
       orderNotes,
       paymentMethod = 'COD',
+      paymentNumber,
+      transactionId,
       items,
     } = req.body;
 
     const settings = await db.storeSettings.findFirst();
-    if (settings && !settings.codEnabled) {
+    if (paymentMethod === 'COD' && settings && !settings.codEnabled) {
       throw new ApiError(400, 'Cash on delivery is currently unavailable');
     }
-    const deliveryCharge = settings?.deliveryCharge ?? 60;
 
     // Validate stock and compute totals inside a transaction
     const result = await db.$transaction(async (tx) => {
@@ -46,7 +47,6 @@ export const createOrder = asyncHandler(
 
         let variant: any = null;
         let unitPrice: number = Number(product.basePrice);
-        let stockField: any = null;
 
         if (item.variantId) {
           variant = product.variants.find((v) => v.id === item.variantId);
@@ -57,7 +57,6 @@ export const createOrder = asyncHandler(
             throw new ApiError(400, `Not enough stock for ${product.name} (${variant.size}${variant.color ? ' - ' + variant.color : ''})`);
           }
           unitPrice = variant.price !== null ? Number(variant.price) : Number(product.basePrice);
-          stockField = { variants: { where: { id: item.variantId }, data: { stock: { decrement: item.quantity } } } };
         } else {
           const defaultVariant = product.variants.find(
             (v) => v.size === item.size && (!item.color || v.color === item.color)
@@ -70,7 +69,6 @@ export const createOrder = asyncHandler(
           }
           unitPrice = defaultVariant.price !== null ? Number(defaultVariant.price) : Number(product.basePrice);
           variant = defaultVariant;
-          stockField = { variants: { where: { id: defaultVariant.id }, data: { stock: { decrement: item.quantity } } } };
         }
 
         const itemTotal = unitPrice * item.quantity;
@@ -85,14 +83,28 @@ export const createOrder = asyncHandler(
           color: item.color || null,
         });
 
-        await tx.product.update({
-          where: { id: item.productId },
-          data: stockField,
-        });
+        if (variant?.id) {
+          await tx.productVariant.update({
+            where: { id: variant.id },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
       }
 
+      const isFreeShipping =
+        settings?.freeShippingThreshold !== null &&
+        settings?.freeShippingThreshold !== undefined &&
+        subtotal >= Number(settings.freeShippingThreshold);
+
+      const deliveryCharge = isFreeShipping ? 0 : Number(settings?.deliveryCharge ?? 60);
       const totalAmount = subtotal + Number(deliveryCharge);
       const orderNumber = generateOrderNumber();
+
+      let formattedNotes = orderNotes || '';
+      if (paymentMethod !== 'COD') {
+        const meta = `[Method: ${paymentMethod}${paymentNumber ? ` | Sender: ${paymentNumber}` : ''}${transactionId ? ` | TrxID: ${transactionId}` : ''}]`;
+        formattedNotes = formattedNotes ? `${meta} ${formattedNotes}` : meta;
+      }
 
       const order = await tx.order.create({
         data: {
@@ -103,18 +115,30 @@ export const createOrder = asyncHandler(
           address,
           district,
           area,
-          orderNotes: orderNotes || null,
+          orderNotes: formattedNotes || null,
           status: 'PENDING',
           subtotal: subtotal as any,
           deliveryCharge: Number(deliveryCharge) as any,
           totalAmount: totalAmount as any,
-          paymentMethod: 'COD',
+          paymentMethod: paymentMethod || 'COD',
           paymentStatus: 'PENDING',
           items: {
             create: orderItemsInput,
           },
+          ...(paymentMethod !== 'COD' || transactionId
+            ? {
+                payments: {
+                  create: {
+                    method: paymentMethod,
+                    amount: totalAmount as any,
+                    status: 'PENDING',
+                    transactionId: transactionId || null,
+                  },
+                },
+              }
+            : {}),
         },
-        include: { items: { include: { variant: true } } },
+        include: { items: { include: { variant: true } }, payments: true },
       });
 
       await tx.customer.upsert({
@@ -123,10 +147,10 @@ export const createOrder = asyncHandler(
         create: { name: customerName, phone: customerPhone, email: customerEmail || null },
       });
 
-      return { order, totalAmount, subtotal };
+      return { order, totalAmount, subtotal, deliveryCharge };
     });
 
-    const { order, totalAmount, subtotal } = result as any;
+    const { order, totalAmount, subtotal, deliveryCharge } = result as any;
 
     try {
       await sendOrderConfirmationEmail(
@@ -196,7 +220,7 @@ export const getOrdersAdmin = asyncHandler(
     const skip = (Math.max(Number(page), 1) - 1) * take;
 
     const [orders, total] = await Promise.all([
-      db.order.findMany({ where, take, skip, orderBy: { createdAt: 'desc' }, include: { items: true } }),
+      db.order.findMany({ where, take, skip, orderBy: { createdAt: 'desc' }, include: { items: true, payments: true } }),
       db.order.count({ where }),
     ]);
 
