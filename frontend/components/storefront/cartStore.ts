@@ -37,14 +37,18 @@ export function useCart() {
     deliveryCharge: number;
     deliveryChargeInsideDhaka: number;
     deliveryChargeOutsideDhaka: number;
+    cityDeliveryRates: Record<string, number>;
     freeShippingThreshold: number | null;
     customAnnouncement?: string;
+    showAnnouncement?: boolean;
   }>({
     deliveryCharge: 60,
     deliveryChargeInsideDhaka: 60,
     deliveryChargeOutsideDhaka: 100,
+    cityDeliveryRates: {},
     freeShippingThreshold: 2000,
     customAnnouncement: "",
+    showAnnouncement: true,
   });
 
   useEffect(() => {
@@ -63,12 +67,14 @@ export function useCart() {
             deliveryCharge: inside,
             deliveryChargeInsideDhaka: inside,
             deliveryChargeOutsideDhaka: outside,
+            cityDeliveryRates: res.data.cityDeliveryRates || {},
             freeShippingThreshold:
               res.data.freeShippingThreshold !== null &&
               res.data.freeShippingThreshold !== undefined
                 ? Number(res.data.freeShippingThreshold)
                 : 2000,
             customAnnouncement: res.data.customAnnouncement || "",
+            showAnnouncement: res.data.showAnnouncement !== false,
           });
         }
       })
@@ -182,10 +188,23 @@ export function useCart() {
       if (subtotal === 0 || hasFreeDelivery || isStorewideFreeDelivery) {
         return 0;
       }
-      const isDhaka = !districtName || districtName.toLowerCase().includes("dhaka");
-      return isDhaka
-        ? deliverySettings.deliveryChargeInsideDhaka
-        : deliverySettings.deliveryChargeOutsideDhaka;
+      const norm = (districtName || "").toLowerCase().trim();
+      if (!norm || norm.includes("dhaka")) {
+        return deliverySettings.deliveryChargeInsideDhaka;
+      }
+      if (deliverySettings.cityDeliveryRates) {
+        for (const [cityName, rate] of Object.entries(
+          deliverySettings.cityDeliveryRates
+        )) {
+          if (
+            norm.includes(cityName.toLowerCase()) ||
+            cityName.toLowerCase().includes(norm)
+          ) {
+            return Number(rate);
+          }
+        }
+      }
+      return deliverySettings.deliveryChargeOutsideDhaka;
     },
     [subtotal, hasFreeDelivery, isStorewideFreeDelivery, deliverySettings]
   );

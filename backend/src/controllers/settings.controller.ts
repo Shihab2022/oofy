@@ -11,8 +11,10 @@ export function parseStoreSettings(s: any) {
       deliveryCharge: 60,
       deliveryChargeInsideDhaka: 60,
       deliveryChargeOutsideDhaka: 100,
+      cityDeliveryRates: {} as Record<string, number>,
       freeShippingThreshold: 2000,
       customAnnouncement: '',
+      showAnnouncement: true,
       codEnabled: true,
     };
   }
@@ -22,11 +24,26 @@ export function parseStoreSettings(s: any) {
   const outsideMatch = rawTagline.match(/\[OUTSIDE_DHAKA:(\d+)\]/);
   const deliveryChargeOutsideDhaka = outsideMatch ? Number(outsideMatch[1]) : 100;
 
+  const showAnnounceMatch = rawTagline.match(/\[SHOW_ANNOUNCEMENT:(\d+)\]/);
+  const showAnnouncement = showAnnounceMatch ? showAnnounceMatch[1] === '1' : true;
+
+  const cityRatesMatch = rawTagline.match(/\[CITY_RATES:([^\]]+)\]/);
+  let cityDeliveryRates: Record<string, number> = {};
+  if (cityRatesMatch) {
+    try {
+      cityDeliveryRates = JSON.parse(decodeURIComponent(cityRatesMatch[1]));
+    } catch {
+      cityDeliveryRates = {};
+    }
+  }
+
   const announcementMatch = rawTagline.match(/\[ANNOUNCEMENT:([^\]]+)\]/);
   const customAnnouncement = announcementMatch ? announcementMatch[1] : '';
 
   const cleanTagline = rawTagline
     .replace(/\[OUTSIDE_DHAKA:\d+\]/g, '')
+    .replace(/\[SHOW_ANNOUNCEMENT:\d+\]/g, '')
+    .replace(/\[CITY_RATES:[^\]]+\]/g, '')
     .replace(/\[ANNOUNCEMENT:[^\]]+\]/g, '')
     .trim() || 'Wear Your Confidence';
 
@@ -35,7 +52,9 @@ export function parseStoreSettings(s: any) {
     deliveryCharge: Number(s.deliveryCharge ?? 60),
     deliveryChargeInsideDhaka: Number(s.deliveryCharge ?? 60),
     deliveryChargeOutsideDhaka,
+    cityDeliveryRates,
     customAnnouncement,
+    showAnnouncement,
     storeTagline: cleanTagline,
   };
 }
@@ -53,6 +72,8 @@ export const updateSettings = asyncHandler(
 
     const {
       deliveryChargeOutsideDhaka,
+      cityDeliveryRates,
+      showAnnouncement,
       customAnnouncement,
       storeTagline,
       deliveryChargeInsideDhaka,
@@ -63,6 +84,8 @@ export const updateSettings = asyncHandler(
 
     let packedTagline = (storeTagline || existing?.storeTagline || 'Wear Your Confidence')
       .replace(/\[OUTSIDE_DHAKA:\d+\]/g, '')
+      .replace(/\[SHOW_ANNOUNCEMENT:\d+\]/g, '')
+      .replace(/\[CITY_RATES:[^\]]+\]/g, '')
       .replace(/\[ANNOUNCEMENT:[^\]]+\]/g, '')
       .trim();
 
@@ -71,6 +94,22 @@ export const updateSettings = asyncHandler(
         ? Number(deliveryChargeOutsideDhaka)
         : 100;
     packedTagline += ` [OUTSIDE_DHAKA:${outsideCharge}]`;
+
+    const isShowAnnounce =
+      showAnnouncement !== false &&
+      showAnnouncement !== 'false' &&
+      showAnnouncement !== 0;
+    packedTagline += ` [SHOW_ANNOUNCEMENT:${isShowAnnounce ? 1 : 0}]`;
+
+    if (
+      cityDeliveryRates &&
+      typeof cityDeliveryRates === 'object' &&
+      Object.keys(cityDeliveryRates).length > 0
+    ) {
+      packedTagline += ` [CITY_RATES:${encodeURIComponent(
+        JSON.stringify(cityDeliveryRates)
+      )}]`;
+    }
 
     if (customAnnouncement && customAnnouncement.trim()) {
       packedTagline += ` [ANNOUNCEMENT:${customAnnouncement.trim()}]`;

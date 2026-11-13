@@ -66,7 +66,7 @@ export function ProductPurchase({
           </button>
         ))}
       </div>
-      <div className="purchase-actions flex flex-col gap-3">
+      <div className="mt-6 flex flex-col gap-3 w-full">
         <div className="flex items-center gap-3 w-full">
           <div className="quantity-control">
             <button onClick={() => setQuantity(Math.max(1, quantity - 1))}>

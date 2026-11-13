@@ -4,6 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
 import { sendOrderConfirmationEmail, sendOrderNotificationEmail } from '../services/email.service';
 import { parseStoreSettings } from './settings.controller';
+import { syncScheduledProducts } from './product.controller';
 
 function generateOrderNumber(): string {
   const prefix = 'OOFY';
@@ -32,10 +33,13 @@ export const createOrder = asyncHandler(
       throw new ApiError(400, 'Cash on delivery is currently unavailable');
     }
 
+    await syncScheduledProducts();
+
     // Validate stock and compute totals inside a transaction
     const result = await db.$transaction(async (tx) => {
       const orderItemsInput: any[] = [];
       let subtotal = 0;
+      let hasFreeDeliveryProduct = false;
 
       for (const item of items) {
         const product = await tx.product.findUnique({
@@ -43,33 +47,56 @@ export const createOrder = asyncHandler(
           include: { variants: true },
         });
         if (!product || !product.isPublished) {
-          throw new ApiError(400, `Product ${item.productId} not found or unpublished`);
+          throw new ApiError(400, `Product "${item.productId}" is not available or unpublished`);
         }
 
         let variant: any = null;
-        let unitPrice: number = Number(product.basePrice);
-
         if (item.variantId) {
           variant = product.variants.find((v) => v.id === item.variantId);
-          if (!variant) {
-            throw new ApiError(400, `Selected variant not found for product ${product.name}`);
-          }
-          if (variant.stock < item.quantity) {
-            throw new ApiError(400, `Not enough stock for ${product.name} (${variant.size}${variant.color ? ' - ' + variant.color : ''})`);
-          }
-          unitPrice = variant.price !== null ? Number(variant.price) : Number(product.basePrice);
-        } else {
-          const defaultVariant = product.variants.find(
-            (v) => v.size === item.size && (!item.color || v.color === item.color)
+        }
+        if (!variant && item.size) {
+          variant = product.variants.find(
+            (v) =>
+              v.size.toLowerCase() === item.size.toLowerCase() &&
+              (!item.color || !v.color || v.color.toLowerCase() === item.color.toLowerCase())
           );
-          if (!defaultVariant) {
-            throw new ApiError(400, `Selected size not available for ${product.name}`);
-          }
-          if (defaultVariant.stock < item.quantity) {
-            throw new ApiError(400, `Not enough stock for ${product.name} (size ${item.size})`);
-          }
-          unitPrice = defaultVariant.price !== null ? Number(defaultVariant.price) : Number(product.basePrice);
-          variant = defaultVariant;
+        }
+        if (!variant && item.size) {
+          variant = product.variants.find(
+            (v) => v.size.toLowerCase() === item.size.toLowerCase()
+          );
+        }
+        if (!variant && product.variants.length > 0) {
+          variant = product.variants[0];
+        }
+
+        if (variant && variant.stock < item.quantity) {
+          throw new ApiError(
+            400,
+            `Not enough stock for "${product.name}" (Size: ${variant.size || item.size}). Available: ${variant.stock}`
+          );
+        }
+
+        // Calculate unit price considering active discounts
+        const basePrice = Number(product.basePrice);
+        const hasDiscount =
+          product.discountPrice !== null &&
+          product.discountPrice !== undefined &&
+          Number(product.discountPrice) < basePrice;
+
+        let unitPrice = hasDiscount ? Number(product.discountPrice) : basePrice;
+
+        if (variant && variant.price !== null && variant.price !== undefined) {
+          unitPrice = Number(variant.price);
+        }
+
+        const isFree = Boolean(
+          product.careInstructions?.includes('[FREE_DELIVERY]') ||
+          product.description?.includes('[FREE_DELIVERY]') ||
+          product.shortDescription?.includes('[FREE_DELIVERY]')
+        );
+        if (isFree) {
+          hasFreeDeliveryProduct = true;
         }
 
         const itemTotal = unitPrice * item.quantity;
@@ -92,20 +119,23 @@ export const createOrder = asyncHandler(
         }
       }
 
-      const hasFreeDeliveryProduct = orderItemsData.some((item) => {
-        const prod = products.find((p) => p.id === item.productId);
-        return (
-          prod?.careInstructions?.includes('[FREE_DELIVERY]') ||
-          prod?.description?.includes('[FREE_DELIVERY]') ||
-          prod?.shortDescription?.includes('[FREE_DELIVERY]')
-        );
-      });
-
       const parsedSettings = parseStoreSettings(settings);
-      const isDhaka = Boolean(district && district.toLowerCase().includes('dhaka'));
-      const baseDelivery = isDhaka
-        ? parsedSettings.deliveryChargeInsideDhaka
-        : parsedSettings.deliveryChargeOutsideDhaka;
+      const normalizedDistrict = (district || '').trim().toLowerCase();
+      let baseDelivery = parsedSettings.deliveryChargeOutsideDhaka;
+
+      if (normalizedDistrict.includes('dhaka')) {
+        baseDelivery = parsedSettings.deliveryChargeInsideDhaka;
+      } else if (parsedSettings.cityDeliveryRates) {
+        for (const [cityName, rate] of Object.entries(parsedSettings.cityDeliveryRates)) {
+          if (
+            normalizedDistrict.includes(cityName.toLowerCase()) ||
+            cityName.toLowerCase().includes(normalizedDistrict)
+          ) {
+            baseDelivery = Number(rate);
+            break;
+          }
+        }
+      }
 
       const isStorewideFreeDelivery =
         baseDelivery === 0 ||

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Hero,
   MarqueeTicker,
@@ -18,7 +18,7 @@ import { CheckoutDialog } from "../components/storefront/CheckoutDialog";
 import { ProductQuickViewModal } from "../components/storefront/ProductQuickViewModal";
 import { Product, Category } from "../components/storefront/types";
 import { useCart } from "../components/storefront/cartStore";
-import { FiCheckCircle, FiX } from "react-icons/fi";
+import { FiCheckCircle, FiX, FiArrowRight } from "react-icons/fi";
 
 const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api")
   .trim()
@@ -70,6 +70,7 @@ export default function HomePage() {
     setOrderSuccess,
     addToCart,
     updateQuantity,
+    removeFromCart,
     clearCart,
     count,
     shipping,
@@ -112,6 +113,17 @@ export default function HomePage() {
     loadData();
   }, [loadData]);
 
+  // Requirement 8: Home page shows only 6 in-stock products (stock-out products hidden on homepage)
+  const homeInStockProducts = useMemo(() => {
+    return products
+      .filter((p) => {
+        const totalStock =
+          p.variants?.reduce((sum, v) => sum + Number(v.stock || 0), 0) ?? 0;
+        return totalStock > 0;
+      })
+      .slice(0, 6);
+  }, [products]);
+
   return (
     <main className="store-main-wrapper">
       {/* Global Header with Live Cart Count */}
@@ -144,15 +156,32 @@ export default function HomePage() {
       {/* Moving Brand Ticker */}
       <MarqueeTicker />
 
-      {/* Product Collection with Proper Skeleton Loading */}
+      {/* Product Collection: 6 In-Stock Featured Drops */}
       <ProductCollection
-        products={products}
+        products={homeInStockProducts}
         categories={categories}
         isLoading={isLoading}
         error={error}
         onRetry={loadData}
         onAddToCart={addToCart}
       />
+
+      {/* Explore Entire Catalog Banner Link (Item 8) */}
+      <section className="catalog-browse-all-strip border-b border-[#111] bg-[#f7f5f0] py-12 px-6 text-center">
+        <p className="text-xs uppercase font-bold tracking-[0.2em] text-[#666] mb-3">
+          Drop 004 & Archival Essentials
+        </p>
+        <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-[#111] mb-5">
+          Looking for More Cuts & Colors?
+        </h3>
+        <a
+          href="/products"
+          className="inline-flex items-center gap-3 rounded-full bg-[#111] text-[#f7f5f0] hover:bg-[#d2f83a] hover:text-[#111] px-8 py-4 text-xs font-black uppercase tracking-widest transition-all shadow-md group cursor-pointer"
+        >
+          <span>Explore Entire Catalog ({products.length} Pieces)</span>
+          <FiArrowRight className="text-base group-hover:translate-x-1 transition-transform" />
+        </a>
+      </section>
 
       {/* Craftsmanship Spotlight */}
       <CraftsmanshipSection />
@@ -162,7 +191,7 @@ export default function HomePage() {
 
       {/* Studio Visual Lookbook - Interactive with Quick View on Click */}
       <LookbookSection
-        products={products}
+        products={homeInStockProducts}
         onSelectProduct={(p) => setQuickViewProduct(p)}
       />
 
@@ -207,12 +236,14 @@ export default function HomePage() {
         />
       )}
 
-      {/* Cash on Delivery Checkout Dialog */}
+      {/* Cash on Delivery / Mobile Pay Checkout Dialog */}
       {checkoutOpen && (
         <CheckoutDialog
           items={cart}
           shipping={shipping}
           onClose={() => setCheckoutOpen(false)}
+          onUpdateQuantity={updateQuantity}
+          onRemoveItem={removeFromCart}
           onDone={(msg) => {
             clearCart();
             setCheckoutOpen(false);

@@ -23,6 +23,7 @@ import {
   FiX,
   FiStar,
   FiClock,
+  FiMenu,
   FiUploadCloud,
   FiCheckCircle,
   FiAlertCircle,
@@ -144,6 +145,7 @@ export default function AdminPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [search, setSearch] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Modern Toast & Modal Confirm States (Item 4)
   const [toasts, setToasts] = useState<
@@ -457,29 +459,119 @@ export default function AdminPage() {
         </div>
       </aside>
 
+      {/* Mobile Drawer Navigation (Item 1) */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm lg:hidden animate-in fade-in"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="w-72 bg-[#121512] text-white h-full flex flex-col p-5 animate-in slide-in-from-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-6 border-b border-white/10">
+              <a href="/" className="text-2xl font-black tracking-[-.13em]">
+                OOFY<span className="text-lime">®</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1 text-white/60 hover:text-white"
+                aria-label="Close menu"
+              >
+                <FiX className="text-xl" />
+              </button>
+            </div>
+            <p className="mt-4 px-3 text-[10px] font-bold uppercase tracking-[.18em] text-white/45">
+              Commerce manager
+            </p>
+            <nav className="mt-2 space-y-1 flex-1 overflow-y-auto">
+              {nav.map(([label, Icon]: any) => (
+                <button
+                  key={label}
+                  onClick={() => {
+                    changeTab(label);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${
+                    active === label
+                      ? "bg-lime text-ink font-bold"
+                      : "text-white/65 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <Icon />
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div className="mt-auto border-t border-white/10 pt-4">
+              <p className="text-xs font-bold text-white">OOFY Admin</p>
+              <p className="mt-0.5 text-[11px] text-white/50">Store owner</p>
+              <button
+                onClick={() => {
+                  localStorage.removeItem("oofy_admin_token");
+                  setToken("");
+                }}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 text-xs font-bold text-white hover:bg-white/20"
+              >
+                <FiLogOut /> Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Workspace */}
       <div className="lg:pl-64">
         <header className="sticky top-0 z-10 flex h-20 items-center justify-between border-b border-black/5 bg-[#f6f7f5]/95 px-5 backdrop-blur md:px-9">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[.2em] text-ink/45">
-              Commerce manager
-            </p>
-            <h1 className="mt-1 text-xl font-black tracking-[-.05em]">
-              {pageTitle}
-            </h1>
-          </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden p-2 rounded-xl border border-black/10 bg-white text-ink hover:bg-black/5 cursor-pointer"
+              aria-label="Open menu"
+            >
+              <FiMenu className="text-xl" />
+            </button>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-ink/45">
+                Commerce manager
+              </p>
+              <h1 className="mt-0.5 text-lg sm:text-xl font-black tracking-[-.05em]">
+                {pageTitle}
+              </h1>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => {
                 setEditing(null);
                 setShowEditor(true);
               }}
-              className="flex items-center gap-2 rounded-xl bg-ink px-4 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black/80 transition-all shadow-sm"
+              className="flex items-center gap-2 rounded-xl bg-ink px-3.5 py-2.5 sm:px-4 sm:py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black/80 transition-all shadow-sm"
             >
               <FiPlus /> Add product
             </button>
           </div>
         </header>
+
+        {/* Horizontal Mobile / Tablet Tab Switcher (1-tap switching) */}
+        <div className="lg:hidden flex items-center gap-2 overflow-x-auto bg-white border-b border-black/8 px-4 py-2.5 scrollbar-thin">
+          {nav.map(([label, Icon]: any) => (
+            <button
+              key={label}
+              onClick={() => changeTab(label)}
+              className={`flex-shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                active === label
+                  ? "bg-[#121512] text-white shadow-sm"
+                  : "bg-black/5 text-ink/70 hover:bg-black/10"
+              }`}
+            >
+              <Icon className="text-xs" />
+              {label}
+            </button>
+          ))}
+        </div>
 
         <section className="p-5 md:p-9">
           {active === "Overview" && (

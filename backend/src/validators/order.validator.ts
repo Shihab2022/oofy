@@ -28,8 +28,8 @@ export const orderCreateSchema = z.object({
     items: z
       .array(
         z.object({
-          productId: z.string().uuid('Invalid product'),
-          variantId: z.string().uuid('Invalid variant').optional().nullable(),
+          productId: z.string().min(1, 'Product is required'),
+          variantId: z.string().optional().nullable(),
           quantity: z.number().int().positive('Quantity must be at least 1'),
           size: z.string().min(1, 'Size is required'),
           color: z.string().optional().nullable(),

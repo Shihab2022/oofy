@@ -29,16 +29,16 @@ export function SiteFooter() {
           <p className="footer-col-title">Collection</p>
           <ul className="footer-links-list">
             <li>
-              <a href="#collection">All Drops</a>
+              <a href="/products">All Drops & Pieces</a>
             </li>
             <li>
-              <a href="#collection">Hoodies & Sweats</a>
+              <a href="/#collection">Seasonal Staples</a>
             </li>
             <li>
-              <a href="#collection">Heavyweight Tees</a>
+              <a href="/products?category=hoodies">Hoodies & Sweats</a>
             </li>
             <li>
-              <a href="#collection">Essential Shirts</a>
+              <a href="/products?category=t-shirts">Heavyweight Tees</a>
             </li>
           </ul>
         </div>
@@ -47,18 +47,16 @@ export function SiteFooter() {
           <p className="footer-col-title">Client Care</p>
           <ul className="footer-links-list">
             <li>
-              <a href="#collection">Cash on Delivery</a>
+              <a href="/contact">Contact Atelier & Support</a>
             </li>
             <li>
-              <a href="#manifesto">Returns & Exchanges</a>
+              <a href="/#manifesto">Returns & Exchanges (14 Days)</a>
             </li>
             <li>
-              <a href="mailto:support@oofywear.com">support@oofywear.com</a>
+              <a href="mailto:support@oofy.store">support@oofy.store</a>
             </li>
             <li>
-              <a href="/admin" className="admin-link">
-                Admin Portal <FiArrowUpRight className="inline-icon" />
-              </a>
+              <a href="tel:+8801712345678">+880 1712-345678</a>
             </li>
           </ul>
         </div>
@@ -71,14 +69,14 @@ export function SiteFooter() {
           </p>
           <div className="cod-badge-box">
             <strong>CASH ON DELIVERY</strong>
-            <span>Verified doorstep inspection</span>
+            <span>Doorstep package inspection across Bangladesh</span>
           </div>
         </div>
       </div>
 
       <div className="footer-bottom-bar">
         <p className="footer-copyright">
-          © {new Date().getFullYear()} OOFY. All rights reserved. Crafted in Dhaka, Bangladesh.
+          © {new Date().getFullYear()} OOFY®. All rights reserved. Crafted in Dhaka, Bangladesh.
         </p>
         <button
           type="button"

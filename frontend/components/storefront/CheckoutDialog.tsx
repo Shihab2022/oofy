@@ -19,8 +19,10 @@ import {
   FiMapPin,
   FiFileText,
   FiChevronDown,
+  FiTrash2,
 } from "react-icons/fi";
 import { CartItem, money, productPrice, isFreeDeliveryProduct } from "./types";
+import { getStoredCart, saveStoredCart } from "./cartStore";
 
 const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api")
   .trim()
@@ -104,11 +106,20 @@ type Props = {
   shipping: number;
   onClose: () => void;
   onDone: (message: string) => void;
+  onUpdateQuantity?: (variantId: string, quantity: number) => void;
+  onRemoveItem?: (variantId: string) => void;
 };
 
 type PaymentMethod = "COD" | "BKASH" | "NAGAD";
 
-export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
+export function CheckoutDialog({
+  items,
+  shipping,
+  onClose,
+  onDone,
+  onUpdateQuantity,
+  onRemoveItem,
+}: Props) {
   const [form, setForm] = useState({
     customerName: "",
     customerPhone: "",
@@ -131,10 +142,12 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
   const [deliveryRates, setDeliveryRates] = useState<{
     insideDhaka: number;
     outsideDhaka: number;
+    cityRates: Record<string, number>;
     threshold: number | null;
   }>({
     insideDhaka: 60,
     outsideDhaka: 100,
+    cityRates: {},
     threshold: 2000,
   });
 
@@ -148,6 +161,7 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
               res.data.deliveryChargeInsideDhaka ?? res.data.deliveryCharge ?? 60
             ),
             outsideDhaka: Number(res.data.deliveryChargeOutsideDhaka ?? 100),
+            cityRates: res.data.cityDeliveryRates || {},
             threshold:
               res.data.freeShippingThreshold !== null &&
               res.data.freeShippingThreshold !== undefined &&
@@ -167,20 +181,88 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
   );
 
   const hasFreeItem = items.some((item) => isFreeDeliveryProduct(item.product));
-  const isDhaka = form.district.toLowerCase().includes("dhaka");
 
   const effectiveShipping = useMemo(() => {
     if (subtotal === 0 || hasFreeItem) return 0;
     if (deliveryRates.insideDhaka === 0 && deliveryRates.outsideDhaka === 0) return 0;
     if (deliveryRates.threshold !== null && deliveryRates.threshold === 0) return 0;
     if (deliveryRates.threshold !== null && subtotal >= deliveryRates.threshold) return 0;
-    return isDhaka ? deliveryRates.insideDhaka : deliveryRates.outsideDhaka;
-  }, [subtotal, hasFreeItem, isDhaka, deliveryRates]);
+
+    const norm = (
+      form.district === "Other" ? form.customDistrict : form.district
+    ).toLowerCase().trim();
+
+    if (!norm || norm.includes("dhaka")) {
+      return deliveryRates.insideDhaka;
+    }
+
+    if (deliveryRates.cityRates) {
+      for (const [cityName, rate] of Object.entries(deliveryRates.cityRates)) {
+        if (
+          norm.includes(cityName.toLowerCase()) ||
+          cityName.toLowerCase().includes(norm)
+        ) {
+          return Number(rate);
+        }
+      }
+    }
+
+    return deliveryRates.outsideDhaka;
+  }, [subtotal, hasFreeItem, form.district, form.customDistrict, deliveryRates]);
 
   const total = subtotal + effectiveShipping;
 
   const activeStoreNumber =
     paymentMethod === "BKASH" ? STORE_BKASH_NUMBER : STORE_NAGAD_NUMBER;
+
+  // Item quantity & removal handlers (Requirement 10)
+  const handleIncrease = (item: CartItem) => {
+    setError("");
+    const maxStock = item.variant?.stock ?? 99;
+    const nextQty = item.quantity + 1;
+    if (nextQty > maxStock) {
+      setError(`Only ${maxStock} in stock for ${item.product.name} (${item.variant.size}).`);
+      return;
+    }
+    if (onUpdateQuantity) {
+      onUpdateQuantity(item.variant.id, nextQty);
+    } else {
+      const current = getStoredCart();
+      const updated = current.map((i) =>
+        i.variant.id === item.variant.id ? { ...i, quantity: nextQty } : i
+      );
+      saveStoredCart(updated);
+    }
+  };
+
+  const handleDecrease = (item: CartItem) => {
+    setError("");
+    if (item.quantity <= 1) {
+      handleDelete(item);
+      return;
+    }
+    const nextQty = item.quantity - 1;
+    if (onUpdateQuantity) {
+      onUpdateQuantity(item.variant.id, nextQty);
+    } else {
+      const current = getStoredCart();
+      const updated = current.map((i) =>
+        i.variant.id === item.variant.id ? { ...i, quantity: nextQty } : i
+      );
+      saveStoredCart(updated);
+    }
+  };
+
+  const handleDelete = (item: CartItem) => {
+    setError("");
+    if (onRemoveItem) {
+      onRemoveItem(item.variant.id);
+    } else {
+      const current = getStoredCart();
+      const updated = current.filter((i) => i.variant.id !== item.variant.id);
+      saveStoredCart(updated);
+    }
+  };
 
   const handleCopy = (text: string, label: string) => {
     const clean = text.replace(/[\s\-]/g, "");
@@ -879,39 +961,102 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
 
                 {/* Items List */}
                 <div className="summary-items-scroll">
-                  {items.map((item) => {
-                    const price = Number(productPrice(item.product, item.variant));
-                    const imgUrl = item.product.images?.[0]?.url;
+                  {items.length === 0 ? (
+                    <div className="checkout-empty-state-box">
+                      <FiShoppingBag className="mx-auto text-3xl text-gray-400 mb-2" />
+                      <p>Your bag is empty. Please add items to complete checkout.</p>
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl bg-[#111] px-5 py-2.5 text-xs font-bold uppercase text-white hover:bg-black/80"
+                      >
+                        Browse Collection
+                      </button>
+                    </div>
+                  ) : (
+                    items.map((item) => {
+                      const price = Number(productPrice(item.product, item.variant));
+                      const imgUrl = item.product.images?.[0]?.url;
 
-                    return (
-                      <div key={item.variant.id} className="summary-item-card">
-                        <div className="item-thumb-box">
-                          {imgUrl ? (
-                            <img src={imgUrl} alt={item.product.name} />
-                          ) : (
-                            <div className="thumb-empty">
-                              <FiShoppingBag />
+                      return (
+                        <div key={item.variant.id} className="summary-item-card">
+                          <div className="item-thumb-box">
+                            {imgUrl ? (
+                              <img src={imgUrl} alt={item.product.name} />
+                            ) : (
+                              <div className="thumb-empty">
+                                <FiShoppingBag />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="item-info-col">
+                            <p className="item-name">{item.product.name}</p>
+                            <div className="item-variant-chips">
+                              <span className="chip">Size: {item.variant.size}</span>
+                              {item.variant.color && (
+                                <span className="chip">{item.variant.color}</span>
+                              )}
                             </div>
-                          )}
-                          <span className="thumb-qty-tag">{item.quantity}</span>
-                        </div>
 
-                        <div className="item-info-col">
-                          <p className="item-name">{item.product.name}</p>
-                          <div className="item-variant-chips">
-                            <span className="chip">Size: {item.variant.size}</span>
-                            {item.variant.color && (
-                              <span className="chip">{item.variant.color}</span>
+                            {/* Quantity Controls & Delete Item (Item 10) */}
+                            <div className="checkout-item-actions-row">
+                              <div className="checkout-qty-group">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDecrease(item)}
+                                  className="checkout-qty-btn"
+                                  aria-label="Decrease quantity"
+                                >
+                                  {item.quantity === 1 ? (
+                                    <FiTrash2 className="text-rose-500 text-xs" />
+                                  ) : (
+                                    "−"
+                                  )}
+                                </button>
+                                <span className="checkout-qty-val">
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleIncrease(item)}
+                                  className="checkout-qty-btn"
+                                  aria-label="Increase quantity"
+                                  disabled={
+                                    item.variant?.stock !== undefined &&
+                                    item.quantity >= item.variant.stock
+                                  }
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(item)}
+                                className="checkout-remove-btn"
+                                title="Remove item"
+                                aria-label="Remove item"
+                              >
+                                <FiTrash2 />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="text-right flex flex-col justify-between items-end">
+                            <strong className="item-price-val">
+                              {money(price * item.quantity)}
+                            </strong>
+                            {item.quantity > 1 && (
+                              <span className="text-[10px] text-gray-400">
+                                {money(price)} ea
+                              </span>
                             )}
                           </div>
                         </div>
-
-                        <strong className="item-price-val">
-                          {money(price * item.quantity)}
-                        </strong>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
 
                 {/* Pricing Breakdown */}

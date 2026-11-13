@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141714"/>
+      <stop offset="100%" stop-color="#0a0c0a"/>
+    </linearGradient>
+  </defs>
+  <!-- Background with subtle luxury rounded corners -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#2a2e2a" stroke-width="8"/>
+  
+  <!-- OOFY Monogram Wordmark -->
+  <g fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-weight="900" letter-spacing="-14">
+    <text x="256" y="320" font-size="148" text-anchor="middle">
+      <tspan fill="#ffffff">OOF</tspan><tspan fill="#d2f83a">Y</tspan>
+    </text>
+  </g>
+  <!-- Trademark Circle -->
+  <circle cx="430" cy="210" r="18" fill="none" stroke="#d2f83a" stroke-width="4"/>
+  <text x="430" y="217" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900" fill="#d2f83a" text-anchor="middle">R</text>
+</svg>

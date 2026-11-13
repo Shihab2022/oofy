@@ -32,6 +32,7 @@ export default function ProductDetailsPage() {
     setOrderSuccess,
     addToCart,
     updateQuantity,
+    removeFromCart,
     clearCart,
     count,
     shipping,
@@ -111,6 +112,8 @@ export default function ProductDetailsPage() {
           items={cart}
           shipping={shipping}
           onClose={() => setCheckoutOpen(false)}
+          onUpdateQuantity={updateQuantity}
+          onRemoveItem={removeFromCart}
           onDone={(msg) => {
             clearCart();
             setCheckoutOpen(false);

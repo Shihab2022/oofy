@@ -28,12 +28,22 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
       .then((r) => r.json())
       .then((res) => {
         if (res.success && res.data) {
+          const isAnnouncementEnabled = res.data.showAnnouncement !== false;
+          if (!isAnnouncementEnabled) {
+            setAnnouncement({ text: "", visible: false });
+            return;
+          }
+
           const custom = res.data.customAnnouncement;
           const threshold = res.data.freeShippingThreshold;
 
           if (custom && custom.trim()) {
             setAnnouncement({ text: custom.trim(), visible: true });
-          } else if (threshold !== null && threshold !== undefined && threshold !== "") {
+          } else if (
+            threshold !== null &&
+            threshold !== undefined &&
+            threshold !== ""
+          ) {
             const num = Number(threshold);
             if (num === 0) {
               setAnnouncement({
@@ -67,7 +77,7 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
 
   return (
     <>
-      {/* Top Announcement Bar (Controlled by Admin Settings) */}
+      {/* Top Announcement Bar (Controlled by Admin Settings & Toggle) */}
       {announcement.visible && announcement.text && (
         <aside
           className="announcement-bar"
@@ -98,11 +108,17 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
               </button>
 
               <nav className="desktop-nav" aria-label="Main Navigation">
-                <a href="#collection" className="nav-item">
+                <a href="/#collection" className="nav-item">
                   Collection
                 </a>
-                <a href="#manifesto" className="nav-item">
+                <a href="/products" className="nav-item">
+                  All Pieces
+                </a>
+                <a href="/#manifesto" className="nav-item">
                   Manifesto
+                </a>
+                <a href="/contact" className="nav-item">
+                  Contact
                 </a>
               </nav>
             </>
@@ -153,7 +169,7 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
             </div>
             <nav className="mobile-nav-links">
               <a
-                href="#collection"
+                href="/#collection"
                 onClick={() => setMobileMenuOpen(false)}
                 className="mobile-link"
               >
@@ -161,16 +177,32 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
                 <FiArrowRight />
               </a>
               <a
-                href="#manifesto"
+                href="/products"
+                onClick={() => setMobileMenuOpen(false)}
+                className="mobile-link"
+              >
+                <span>All Pieces / Catalog</span>
+                <FiArrowRight />
+              </a>
+              <a
+                href="/#manifesto"
                 onClick={() => setMobileMenuOpen(false)}
                 className="mobile-link"
               >
                 <span>Manifesto & Atelier</span>
                 <FiArrowRight />
               </a>
+              <a
+                href="/contact"
+                onClick={() => setMobileMenuOpen(false)}
+                className="mobile-link"
+              >
+                <span>Contact Us</span>
+                <FiArrowRight />
+              </a>
             </nav>
             <div className="mobile-drawer-footer">
-              <p>Cash on Delivery Available</p>
+              <p>Cash on Delivery Available Nationwide</p>
               <small>OOFY® Dhaka, Bangladesh</small>
             </div>
           </div>
