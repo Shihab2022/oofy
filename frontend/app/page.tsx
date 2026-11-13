@@ -184,6 +184,12 @@ export default function HomePage() {
             addToCart(prod, variant, quantity);
             setQuickViewProduct(null);
           }}
+          onBuyNow={(prod, variant, quantity) => {
+            addToCart(prod, variant, quantity);
+            setQuickViewProduct(null);
+            setBagOpen(false);
+            setCheckoutOpen(true);
+          }}
         />
       )}
 

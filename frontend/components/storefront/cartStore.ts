@@ -35,10 +35,16 @@ export function useCart() {
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
   const [deliverySettings, setDeliverySettings] = useState<{
     deliveryCharge: number;
+    deliveryChargeInsideDhaka: number;
+    deliveryChargeOutsideDhaka: number;
     freeShippingThreshold: number | null;
+    customAnnouncement?: string;
   }>({
     deliveryCharge: 60,
+    deliveryChargeInsideDhaka: 60,
+    deliveryChargeOutsideDhaka: 100,
     freeShippingThreshold: 2000,
+    customAnnouncement: "",
   });
 
   useEffect(() => {
@@ -49,13 +55,20 @@ export function useCart() {
       .then((r) => r.json())
       .then((res) => {
         if (res.success && res.data) {
+          const inside = Number(
+            res.data.deliveryChargeInsideDhaka ?? res.data.deliveryCharge ?? 60
+          );
+          const outside = Number(res.data.deliveryChargeOutsideDhaka ?? 100);
           setDeliverySettings({
-            deliveryCharge: Number(res.data.deliveryCharge ?? 60),
+            deliveryCharge: inside,
+            deliveryChargeInsideDhaka: inside,
+            deliveryChargeOutsideDhaka: outside,
             freeShippingThreshold:
               res.data.freeShippingThreshold !== null &&
               res.data.freeShippingThreshold !== undefined
                 ? Number(res.data.freeShippingThreshold)
                 : 2000,
+            customAnnouncement: res.data.customAnnouncement || "",
           });
         }
       })
@@ -80,10 +93,8 @@ export function useCart() {
 
   const addToCart = useCallback(
     (product: Product, variant: Variant, quantity: number = 1) => {
-      // Always get latest cart from localStorage to prevent stale state
       const current = getStoredCart();
 
-      // Find item matching both this product AND this specific variant (size + color)
       const existingIndex = current.findIndex((item) => {
         const isSameProduct = item.product.id === product.id;
         const isSameVariant =
@@ -96,32 +107,23 @@ export function useCart() {
       let updated: CartItem[];
 
       if (existingIndex > -1) {
-        // Same product AND exact same size -> increment quantity
         updated = current.map((item, idx) =>
           idx === existingIndex
-            ? {
-                ...item,
-                quantity: Math.min(
-                  item.quantity + quantity,
-                  Math.max(variant.stock || 99, 1)
-                ),
-              }
+            ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       } else {
-        // New item: whether brand new product OR a different size (e.g. Size M when Size L is already in the bag)
-        // Initial quantity is strictly 1 (or requested quantity)
-        updated = [
-          ...current,
-          {
-            product,
-            variant,
-            quantity: Math.min(quantity, Math.max(variant.stock || 99, 1)),
+        const newItem: CartItem = {
+          product,
+          variant: {
+            ...variant,
+            id: variant.id || `${product.id}-${variant.size}-${variant.color || "default"}`,
           },
-        ];
+          quantity,
+        };
+        updated = [newItem, ...current];
       }
 
-      // Persist to storage outside of React's state updater function
       saveStoredCart(updated);
       setCart(updated);
       setBagOpen(true);
@@ -129,31 +131,24 @@ export function useCart() {
     []
   );
 
-  const updateQuantity = useCallback((index: number, quantity: number) => {
-    const current = getStoredCart();
-    let updated: CartItem[];
-    if (quantity < 1) {
-      updated = current.filter((_, i) => i !== index);
-    } else {
-      updated = current.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              quantity: Math.min(
-                quantity,
-                Math.max(item.variant.stock || 99, 1)
-              ),
-            }
-          : item
-      );
-    }
-    saveStoredCart(updated);
-    setCart(updated);
-  }, []);
+  const updateQuantity = useCallback(
+    (variantId: string, quantity: number) => {
+      const current = getStoredCart();
+      const updated =
+        quantity <= 0
+          ? current.filter((item) => item.variant.id !== variantId)
+          : current.map((item) =>
+              item.variant.id === variantId ? { ...item, quantity } : item
+            );
+      saveStoredCart(updated);
+      setCart(updated);
+    },
+    []
+  );
 
-  const removeFromCart = useCallback((index: number) => {
+  const removeFromCart = useCallback((variantId: string) => {
     const current = getStoredCart();
-    const updated = current.filter((_, i) => i !== index);
+    const updated = current.filter((item) => item.variant.id !== variantId);
     saveStoredCart(updated);
     setCart(updated);
   }, []);
@@ -182,10 +177,23 @@ export function useCart() {
     (deliverySettings.freeShippingThreshold !== null &&
       subtotal >= deliverySettings.freeShippingThreshold);
 
+  const getShippingForDistrict = useCallback(
+    (districtName?: string) => {
+      if (subtotal === 0 || hasFreeDelivery || isStorewideFreeDelivery) {
+        return 0;
+      }
+      const isDhaka = !districtName || districtName.toLowerCase().includes("dhaka");
+      return isDhaka
+        ? deliverySettings.deliveryChargeInsideDhaka
+        : deliverySettings.deliveryChargeOutsideDhaka;
+    },
+    [subtotal, hasFreeDelivery, isStorewideFreeDelivery, deliverySettings]
+  );
+
   const shipping =
     subtotal === 0 || hasFreeDelivery || isStorewideFreeDelivery
       ? 0
-      : deliverySettings.deliveryCharge;
+      : deliverySettings.deliveryChargeInsideDhaka;
 
   const total = subtotal + shipping;
 
@@ -199,6 +207,8 @@ export function useCart() {
     setOrderSuccess,
     deliverySettings,
     hasFreeDelivery,
+    isStorewideFreeDelivery,
+    getShippingForDistrict,
     addToCart,
     updateQuantity,
     removeFromCart,

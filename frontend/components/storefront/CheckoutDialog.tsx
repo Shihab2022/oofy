@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   FiCheck,
   FiCopy,
@@ -20,7 +20,7 @@ import {
   FiFileText,
   FiChevronDown,
 } from "react-icons/fi";
-import { CartItem, money, productPrice } from "./types";
+import { CartItem, money, productPrice, isFreeDeliveryProduct } from "./types";
 
 const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api")
   .trim()
@@ -36,26 +36,66 @@ const BD_DISTRICTS = [
   "Chattogram",
   "Gazipur",
   "Narayanganj",
-  "Sylhet",
-  "Rajshahi",
-  "Khulna",
+  "Bagerhat",
+  "Bandarban",
+  "Barguna",
   "Barishal",
-  "Rangpur",
-  "Mymensingh",
-  "Cumilla",
+  "Bhola",
   "Bogura",
-  "Tangail",
-  "Cox's Bazar",
   "Brahmanbaria",
-  "Feni",
-  "Noakhali",
-  "Jashore",
-  "Kushtia",
-  "Pabna",
+  "Chandpur",
+  "Chapainawabganj",
+  "Chuadanga",
+  "Cox's Bazar",
+  "Cumilla",
   "Dinajpur",
-  "Sirajganj",
-  "Jamalpur",
   "Faridpur",
+  "Feni",
+  "Gaibandha",
+  "Gopalganj",
+  "Habiganj",
+  "Jamalpur",
+  "Jashore",
+  "Jhalokati",
+  "Jhenaidah",
+  "Joypurhat",
+  "Khagrachhari",
+  "Khulna",
+  "Kishoreganj",
+  "Kurigram",
+  "Kushtia",
+  "Lakshmipur",
+  "Lalmonirhat",
+  "Madaripur",
+  "Magura",
+  "Manikganj",
+  "Meherpur",
+  "Moulvibazar",
+  "Munshiganj",
+  "Mymensingh",
+  "Naogaon",
+  "Narail",
+  "Narsingdi",
+  "Natore",
+  "Netrokona",
+  "Nilphamari",
+  "Noakhali",
+  "Pabna",
+  "Panchagarh",
+  "Patuakhali",
+  "Pirojpur",
+  "Rajbari",
+  "Rajshahi",
+  "Rangamati",
+  "Rangpur",
+  "Satkhira",
+  "Shariatpur",
+  "Sherpur",
+  "Sirajganj",
+  "Sunamganj",
+  "Sylhet",
+  "Tangail",
+  "Thakurgaon",
   "Other",
 ];
 
@@ -88,12 +128,56 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
   const [confirmedOrder, setConfirmedOrder] = useState<any | null>(null);
 
+  const [deliveryRates, setDeliveryRates] = useState<{
+    insideDhaka: number;
+    outsideDhaka: number;
+    threshold: number | null;
+  }>({
+    insideDhaka: 60,
+    outsideDhaka: 100,
+    threshold: 2000,
+  });
+
+  useEffect(() => {
+    fetch(`${API}/settings`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setDeliveryRates({
+            insideDhaka: Number(
+              res.data.deliveryChargeInsideDhaka ?? res.data.deliveryCharge ?? 60
+            ),
+            outsideDhaka: Number(res.data.deliveryChargeOutsideDhaka ?? 100),
+            threshold:
+              res.data.freeShippingThreshold !== null &&
+              res.data.freeShippingThreshold !== undefined &&
+              res.data.freeShippingThreshold !== ""
+                ? Number(res.data.freeShippingThreshold)
+                : 2000,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const subtotal = items.reduce(
     (n, item) =>
       n + Number(productPrice(item.product, item.variant)) * item.quantity,
     0
   );
-  const total = subtotal + shipping;
+
+  const hasFreeItem = items.some((item) => isFreeDeliveryProduct(item.product));
+  const isDhaka = form.district.toLowerCase().includes("dhaka");
+
+  const effectiveShipping = useMemo(() => {
+    if (subtotal === 0 || hasFreeItem) return 0;
+    if (deliveryRates.insideDhaka === 0 && deliveryRates.outsideDhaka === 0) return 0;
+    if (deliveryRates.threshold !== null && deliveryRates.threshold === 0) return 0;
+    if (deliveryRates.threshold !== null && subtotal >= deliveryRates.threshold) return 0;
+    return isDhaka ? deliveryRates.insideDhaka : deliveryRates.outsideDhaka;
+  }, [subtotal, hasFreeItem, isDhaka, deliveryRates]);
+
+  const total = subtotal + effectiveShipping;
 
   const activeStoreNumber =
     paymentMethod === "BKASH" ? STORE_BKASH_NUMBER : STORE_NAGAD_NUMBER;
@@ -466,8 +550,11 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
 
                   {/* District */}
                   <div className="field-group">
-                    <label htmlFor="district">
-                      <FiMapPin className="label-icon" /> District <span className="star">*</span>
+                    <label htmlFor="district" className="flex items-center justify-between">
+                      <span><FiMapPin className="label-icon" /> District <span className="star">*</span></span>
+                      <span className="text-[10px] text-ink/50 font-normal">
+                        Dhaka: ৳{deliveryRates.insideDhaka} | Other: ৳{deliveryRates.outsideDhaka}
+                      </span>
                     </label>
                     <div className="input-wrap select-wrap">
                       <select
@@ -835,17 +922,17 @@ export function CheckoutDialog({ items, shipping, onClose, onDone }: Props) {
                   </div>
 
                   <div className="calc-row">
-                    <span>Delivery Charge</span>
+                    <span>Delivery Charge ({isDhaka ? "Inside Dhaka" : "Outside Dhaka"})</span>
                     <span>
-                      {shipping === 0 ? (
+                      {effectiveShipping === 0 ? (
                         <span className="free-shipping-pill">FREE</span>
                       ) : (
-                        money(shipping)
+                        money(effectiveShipping)
                       )}
                     </span>
                   </div>
 
-                  {shipping === 0 && subtotal > 0 && (
+                  {effectiveShipping === 0 && subtotal > 0 && (
                     <div className="free-unlocked-banner">
                       ✦ Free Delivery Unlocked
                     </div>

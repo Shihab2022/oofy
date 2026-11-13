@@ -30,6 +30,8 @@ import {
   FiTag,
   FiCalendar,
   FiRefreshCw,
+  FiTrendingUp,
+  FiAlertTriangle,
 } from "react-icons/fi";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
@@ -72,7 +74,10 @@ type Order = {
   orderNumber: string;
   customerName: string;
   customerPhone: string;
+  district?: string;
   totalAmount: string | number;
+  subtotal?: string | number;
+  deliveryCharge?: string | number;
   status: string;
   createdAt: string;
   items: unknown[];
@@ -136,10 +141,85 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState("");
   const [showEditor, setShowEditor] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [search, setSearch] = useState("");
+
+  // Modern Toast & Modal Confirm States (Item 4)
+  const [toasts, setToasts] = useState<
+    { id: number; message: string; type: "success" | "error" | "info" }[]
+  >([]);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const showToast = (
+    message: string,
+    type: "success" | "error" | "info" = "success"
+  ) => {
+    const id = Date.now();
+    setToasts((curr) => [...curr, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((curr) => curr.filter((t) => t.id !== id));
+    }, 3800);
+  };
+
+  const showConfirm = (options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  }) => {
+    setConfirmModal({
+      isOpen: true,
+      ...options,
+    });
+  };
+
+  const nav = [
+    ["Overview", FiGrid],
+    ["Products", FiPackage],
+    ["Promotions", FiPercent],
+    ["Orders", FiShoppingBag],
+    ["Inventory", FiBox],
+    ["Customers", FiUsers],
+    ["Categories", FiSliders],
+    ["Store settings", FiSettings],
+  ];
+
+  // URL Tab Route Synchronization (Item 10)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam =
+        params.get("tab") || window.location.hash.replace("#", "");
+      if (tabParam) {
+        const found = nav.find(
+          ([label]: any) =>
+            label.toLowerCase().replace(/\s+/g, "-") ===
+              tabParam.toLowerCase() ||
+            label.toLowerCase() === tabParam.toLowerCase()
+        );
+        if (found) setActive(found[0]);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeTab = (tabName: string) => {
+    setActive(tabName);
+    if (typeof window !== "undefined") {
+      const slug = tabName.toLowerCase().replace(/\s+/g, "-");
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", slug);
+      window.history.replaceState({}, "", url.toString());
+    }
+  };
 
   const request = async (path: string, init: RequestInit = {}) => {
     const isForm =
@@ -165,7 +245,7 @@ export default function AdminPage() {
     try {
       const [productData, orderData, categoryData] = await Promise.all([
         request("/admin/products"),
-        request("/orders/admin?limit=50"),
+        request("/orders/admin?limit=100"),
         request("/categories/admin/all"),
       ]);
       setProducts(productData.data || []);
@@ -173,8 +253,9 @@ export default function AdminPage() {
       setCategories(categoryData.data || []);
     } catch {
       setProducts(demoProducts);
-      setNotice(
-        "Showing local preview data — connect the backend to manage live records."
+      showToast(
+        "Showing preview data — connect backend for live database.",
+        "info"
       );
     } finally {
       setLoading(false);
@@ -214,28 +295,24 @@ export default function AdminPage() {
     p.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const nav = [
-    ["Overview", FiGrid],
-    ["Products", FiPackage],
-    ["Promotions", FiPercent],
-    ["Orders", FiShoppingBag],
-    ["Inventory", FiBox],
-    ["Customers", FiUsers],
-    ["Categories", FiSliders],
-    ["Store settings", FiSettings],
-  ];
-
   const pageTitle = active === "Overview" ? "Good morning, OOFY." : active;
 
-  const removeProduct = async (id: string) => {
-    if (!confirm("Remove this product? This cannot be undone.")) return;
-    try {
-      await request(`/admin/products/${id}`, { method: "DELETE" });
-      setProducts(products.filter((p) => p.id !== id));
-      setNotice("Product removed.");
-    } catch (e: any) {
-      setNotice(e.message);
-    }
+  const removeProduct = (id: string, name: string) => {
+    showConfirm({
+      title: "Delete Product?",
+      message: `Are you sure you want to permanently delete "${name}"? This action cannot be undone.`,
+      confirmText: "Delete Product",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await request(`/admin/products/${id}`, { method: "DELETE" });
+          setProducts(products.filter((p) => p.id !== id));
+          showToast(`"${name}" removed successfully.`, "success");
+        } catch (e: any) {
+          showToast(e.message || "Failed to delete product.", "error");
+        }
+      },
+    });
   };
 
   const updateStatus = async (order: Order, status: string) => {
@@ -245,13 +322,102 @@ export default function AdminPage() {
         body: JSON.stringify({ status }),
       });
       setOrders(orders.map((o) => (o.id === order.id ? { ...o, status } : o)));
+      showToast(`Order #${order.orderNumber} updated to ${status}.`, "success");
     } catch (e: any) {
-      setNotice(e.message);
+      showToast(e.message || "Status update failed.", "error");
     }
   };
 
   return (
     <main className="min-h-screen bg-[#f6f7f5] text-[#151915]">
+      {/* Toast Notification Container (Item 4) */}
+      <div className="fixed top-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`pointer-events-auto flex items-center justify-between gap-3 rounded-2xl px-4 py-3.5 shadow-2xl border text-xs font-bold transition-all animate-in fade-in slide-in-from-top-3 ${
+              t.type === "success"
+                ? "bg-[#121512] text-white border-lime/40"
+                : t.type === "error"
+                ? "bg-rose-900 text-white border-rose-500/50"
+                : "bg-white text-ink border-black/10"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {t.type === "success" && (
+                <FiCheckCircle className="text-lime text-base flex-shrink-0" />
+              )}
+              {t.type === "error" && (
+                <FiAlertCircle className="text-rose-400 text-base flex-shrink-0" />
+              )}
+              {t.type === "info" && (
+                <FiClock className="text-sky-500 text-base flex-shrink-0" />
+              )}
+              <span>{t.message}</span>
+            </div>
+            <button
+              onClick={() =>
+                setToasts((curr) => curr.filter((item) => item.id !== t.id))
+              }
+              className="p-1 text-white/50 hover:text-white"
+            >
+              <FiX />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Confirmation Modal (Item 4 - Zero native confirm alerts) */}
+      {confirmModal && confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-black/10">
+            <div className="flex items-start gap-3">
+              <div
+                className={`rounded-xl p-2.5 ${
+                  confirmModal.isDestructive
+                    ? "bg-rose-100 text-rose-600"
+                    : "bg-lime/20 text-ink"
+                }`}
+              >
+                <FiAlertTriangle className="text-xl" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-black tracking-tight text-ink">
+                  {confirmModal.title}
+                </h3>
+                <p className="mt-1 text-xs text-ink/65 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="rounded-xl border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink hover:bg-black/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(null);
+                }}
+                className={`rounded-xl px-5 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all ${
+                  confirmModal.isDestructive
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : "bg-ink hover:bg-black/80"
+                }`}
+              >
+                {confirmModal.confirmText || "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar Navigation */}
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col bg-[#121512] p-5 text-white lg:flex">
         <a href="/" className="mb-12 text-3xl font-black tracking-[-.13em]">
@@ -264,10 +430,10 @@ export default function AdminPage() {
           {nav.map(([label, Icon]: any) => (
             <button
               key={label}
-              onClick={() => setActive(label)}
+              onClick={() => changeTab(label)}
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${
                 active === label
-                  ? "bg-lime text-ink"
+                  ? "bg-lime text-ink font-bold"
                   : "text-white/65 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -316,22 +482,15 @@ export default function AdminPage() {
         </header>
 
         <section className="p-5 md:p-9">
-          {notice && (
-            <div className="mb-6 flex items-center justify-between rounded-xl border border-lime/60 bg-lime/25 px-4 py-3 text-sm">
-              <span>{notice}</span>
-              <button onClick={() => setNotice("")}>
-                <FiX />
-              </button>
-            </div>
-          )}
-
           {active === "Overview" && (
             <Overview
               products={products}
               orders={orders}
               revenue={revenue}
               stock={stock}
-              onOrders={() => setActive("Orders")}
+              onOrders={() => changeTab("Orders")}
+              onPromotions={() => changeTab("Promotions")}
+              onInventory={() => changeTab("Inventory")}
             />
           )}
 
@@ -348,8 +507,8 @@ export default function AdminPage() {
               loading={loading}
               request={request}
               refresh={loadData}
-              setNotice={setNotice}
-              onGoToPromotions={() => setActive("Promotions")}
+              showToast={showToast}
+              onGoToPromotions={() => changeTab("Promotions")}
             />
           )}
 
@@ -359,7 +518,8 @@ export default function AdminPage() {
               categories={categories}
               request={request}
               refresh={loadData}
-              setNotice={setNotice}
+              showToast={showToast}
+              showConfirm={showConfirm}
               onEdit={(p: Product) => {
                 setEditing(p);
                 setShowEditor(true);
@@ -371,7 +531,16 @@ export default function AdminPage() {
             <Orders orders={orders} updateStatus={updateStatus} />
           )}
 
-          {active === "Inventory" && <Inventory products={products} />}
+          {active === "Inventory" && (
+            <Inventory
+              products={products}
+              categories={categories}
+              onEditProduct={(p: Product) => {
+                setEditing(p);
+                setShowEditor(true);
+              }}
+            />
+          )}
 
           {active === "Customers" && <Customers orders={orders} />}
 
@@ -380,22 +549,24 @@ export default function AdminPage() {
               categories={categories}
               request={request}
               refresh={loadData}
-              setNotice={setNotice}
+              showToast={showToast}
+              showConfirm={showConfirm}
             />
           )}
 
           {active === "Store settings" && (
-            <Settings request={request} setNotice={setNotice} />
+            <Settings request={request} showToast={showToast} />
           )}
         </section>
       </div>
 
-      {/* Full-Page Product Studio Editor */}
+      {/* Full-Page Product Studio Editor (Item 1, 2, 7) */}
       {showEditor && (
         <ProductEditor
           product={editing}
           request={request}
           close={() => setShowEditor(false)}
+          showToast={showToast}
           saved={(product: Product) => {
             setProducts(
               editing
@@ -403,7 +574,12 @@ export default function AdminPage() {
                 : [product, ...products]
             );
             setShowEditor(false);
-            setNotice(editing ? "Product updated." : "Product published.");
+            showToast(
+              editing
+                ? `"${product.name}" updated successfully.`
+                : `"${product.name}" saved to catalog.`,
+              "success"
+            );
           }}
         />
       )}
@@ -511,101 +687,320 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
   );
 }
 
-function Overview({ products, orders, revenue, stock, onOrders }: any) {
-  const pending = orders.filter((o: Order) => o.status === "PENDING").length;
+/* -------------------------------------------------------------------------- */
+/*                       OVERVIEW WITH PROPER GRAPH (Item 9)                  */
+/* -------------------------------------------------------------------------- */
+function Overview({
+  products,
+  orders,
+  revenue,
+  stock,
+  onOrders,
+  onPromotions,
+  onInventory,
+}: any) {
+  const pendingOrders = orders.filter((o: Order) => o.status === "PENDING");
+  const confirmedOrders = orders.filter((o: Order) => o.status === "CONFIRMED");
+  const deliveredOrders = orders.filter((o: Order) => o.status === "DELIVERED");
+  const cancelledOrders = orders.filter((o: Order) => o.status === "CANCELLED");
+
   const discountedCount = products.filter(
-    (p: Product) => p.discountPrice && Number(p.discountPrice) < Number(p.basePrice)
+    (p: Product) =>
+      p.discountPrice && Number(p.discountPrice) < Number(p.basePrice)
   ).length;
 
+  const outOfStockCount = products.filter(
+    (p: Product) =>
+      p.variants.reduce((n, v) => n + Number(v.stock), 0) === 0
+  ).length;
+
+  const validOrders = orders.filter((o: Order) => o.status !== "CANCELLED");
+  const avgOrderValue =
+    validOrders.length > 0 ? Math.round(revenue / validOrders.length) : 0;
+
+  // 7-day revenue trend dataset
+  const last7Days = useMemo(() => {
+    const days: { label: string; dateStr: string; total: number; count: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString("en-US", { weekday: "short" });
+
+      const dayOrders = orders.filter((o: Order) => {
+        if (o.status === "CANCELLED") return false;
+        return o.createdAt && o.createdAt.startsWith(dateStr);
+      });
+
+      const dayTotal = dayOrders.reduce(
+        (sum: number, o: Order) => sum + Number(o.totalAmount || 0),
+        0
+      );
+
+      days.push({ label, dateStr, total: dayTotal, count: dayOrders.length });
+    }
+    return days;
+  }, [orders]);
+
+  const maxDayRevenue = Math.max(
+    ...last7Days.map((d) => d.total),
+    1000
+  );
+
   return (
-    <>
+    <div className="space-y-8">
+      {/* 1. Top Metrics Grid */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
           icon={<FiShoppingBag />}
-          label="Total sales"
+          label="Total Revenue"
           value={money(revenue)}
-          note="Gross recorded revenue"
+          note={`${orders.length} total store orders`}
         />
         <Metric
-          icon={<FiPackage />}
-          label="Total units in stock"
-          value={stock.toLocaleString()}
-          note={`${products.length} catalog styles`}
+          icon={<FiTrendingUp />}
+          label="Avg. Order Value"
+          value={money(avgOrderValue)}
+          note="Per confirmed purchase"
         />
         <Metric
           icon={<FiClock />}
-          label="Pending orders"
-          value={pending}
-          warn={pending > 0}
-          note="Orders awaiting fulfillment"
+          label="Pending Fulfillment"
+          value={pendingOrders.length}
+          warn={pendingOrders.length > 0}
+          note="Requires packing & courier"
+          action={pendingOrders.length > 0 ? onOrders : undefined}
+          actionLabel="View desk →"
         />
         <Metric
-          icon={<FiPercent />}
-          label="Active promos"
-          value={`${discountedCount} on sale`}
+          icon={<FiBox />}
+          label="Catalog Inventory"
+          value={`${stock.toLocaleString()} units`}
+          warn={outOfStockCount > 0}
           note={
-            discountedCount === 0
-              ? "No active discounts"
-              : `${Math.round((discountedCount / (products.length || 1)) * 100)}% of catalog`
+            outOfStockCount > 0
+              ? `${outOfStockCount} styles out of stock`
+              : "Healthy variant stock"
           }
+          action={onInventory}
+          actionLabel="Inventory →"
         />
       </div>
 
-      <div className="mt-8 rounded-2xl border border-black/8 bg-white p-6">
-        <div className="flex items-center justify-between">
+      {/* 2. Visual Analytics Section: Revenue Graph & Order Status Pipeline */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* Revenue Performance Graph (SVG Chart) */}
+        <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm lg:col-span-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-4">
+            <div>
+              <h2 className="text-base font-black tracking-tight text-ink flex items-center gap-2">
+                <FiBarChart2 className="text-lime text-lg" />
+                Sales & Revenue Velocity
+              </h2>
+              <p className="mt-0.5 text-xs text-ink/50">
+                Gross transaction trajectory across Bangladesh over the past 7 days.
+              </p>
+            </div>
+            <span className="rounded-full bg-lime/20 px-3 py-1 text-xs font-black text-ink">
+              Live Tracker
+            </span>
+          </div>
+
+          {/* SVG Visual Chart */}
+          <div className="mt-6">
+            <div className="h-56 w-full flex items-end gap-2 sm:gap-4 pt-6 pb-2">
+              {last7Days.map((d, idx) => {
+                const heightPercent = Math.max(
+                  Math.round((d.total / maxDayRevenue) * 100),
+                  8
+                );
+                return (
+                  <div
+                    key={idx}
+                    className="flex-1 flex flex-col items-center h-full justify-end group relative"
+                  >
+                    {/* Tooltip on hover */}
+                    <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center bg-ink text-white text-[11px] font-bold rounded-lg px-2.5 py-1.5 shadow-xl pointer-events-none whitespace-nowrap">
+                      <span>{money(d.total)}</span>
+                      <span className="text-[9px] text-white/60 font-normal">
+                        {d.count} order(s)
+                      </span>
+                    </div>
+
+                    {/* Bar */}
+                    <div
+                      style={{ height: `${heightPercent}%` }}
+                      className={`w-full rounded-t-xl transition-all duration-300 group-hover:brightness-95 ${
+                        d.total > 0
+                          ? "bg-ink group-hover:bg-lime"
+                          : "bg-black/10"
+                      }`}
+                    />
+
+                    {/* Day Label */}
+                    <span className="mt-2 text-[11px] font-bold text-ink/50 group-hover:text-ink">
+                      {d.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-black/5 flex items-center justify-between text-xs text-ink/50">
+              <span>Peak Day: {money(maxDayRevenue)}</span>
+              <span>Past 7 Days Aggregate</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Order Status Pipeline */}
+        <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm lg:col-span-4 flex flex-col justify-between">
           <div>
-            <h2 className="font-black tracking-[-.04em]">Recent store orders</h2>
-            <p className="mt-1 text-xs text-ink/50">
-              Latest transactions placed across Bangladesh.
+            <h3 className="text-base font-black tracking-tight text-ink flex items-center gap-2">
+              <FiSliders className="text-sky-600" />
+              Fulfillment Pipeline
+            </h3>
+            <p className="mt-0.5 text-xs text-ink/50">
+              Order processing breakdown.
+            </p>
+
+            <div className="mt-6 space-y-4">
+              {[
+                {
+                  label: "Pending Review",
+                  count: pendingOrders.length,
+                  color: "bg-amber-500",
+                },
+                {
+                  label: "Confirmed & Packing",
+                  count: confirmedOrders.length,
+                  color: "bg-sky-500",
+                },
+                {
+                  label: "Delivered & Settled",
+                  count: deliveredOrders.length,
+                  color: "bg-emerald-500",
+                },
+                {
+                  label: "Cancelled",
+                  count: cancelledOrders.length,
+                  color: "bg-rose-400",
+                },
+              ].map((item) => {
+                const pct =
+                  orders.length > 0
+                    ? Math.round((item.count / orders.length) * 100)
+                    : 0;
+                return (
+                  <div key={item.label}>
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-ink/75">{item.label}</span>
+                      <span className="text-ink">
+                        {item.count}{" "}
+                        <span className="text-ink/40 font-normal">
+                          ({pct}%)
+                        </span>
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-2 w-full rounded-full bg-black/5 overflow-hidden">
+                      <div
+                        style={{ width: `${pct}%` }}
+                        className={`h-full rounded-full ${item.color} transition-all`}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={onOrders}
+            className="mt-6 w-full rounded-xl bg-[#f7f8f6] py-3 text-xs font-bold text-ink hover:bg-black/5 transition-all flex items-center justify-center gap-1.5"
+          >
+            Open Order Desk <FiChevronRight />
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Recent Orders Preview Table */}
+      <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between border-b border-black/5 pb-4">
+          <div>
+            <h2 className="font-black tracking-[-.04em] text-base text-ink">
+              Recent Transactions
+            </h2>
+            <p className="mt-0.5 text-xs text-ink/50">
+              Latest incoming orders recorded across Bangladesh.
             </p>
           </div>
           <button
             onClick={onOrders}
             className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-ink hover:underline"
           >
-            View all orders <FiChevronRight />
+            All Orders <FiChevronRight />
           </button>
         </div>
-        <div className="mt-5 divide-y divide-black/5">
-          {orders.slice(0, 5).map((o: Order) => (
+        <div className="divide-y divide-black/5">
+          {orders.slice(0, 6).map((o: Order) => (
             <div
               key={o.id}
-              className="flex items-center justify-between py-3.5 text-sm"
+              className="flex items-center justify-between py-3.5 text-sm hover:bg-black/[0.01] px-2 rounded-lg transition-colors"
             >
               <div>
-                <p className="font-bold">{o.orderNumber}</p>
-                <p className="text-xs text-ink/45">
+                <p className="font-bold flex items-center gap-2">
+                  #{o.orderNumber}
+                  <span className="text-xs font-normal text-ink/40">
+                    {o.district || "Dhaka"}
+                  </span>
+                </p>
+                <p className="text-xs text-ink/45 mt-0.5">
                   {o.customerName} · {o.customerPhone}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-bold">{money(o.totalAmount)}</span>
+              <div className="flex items-center gap-4">
+                <span className="font-black text-ink">{money(o.totalAmount)}</span>
                 <Badge status={o.status} />
               </div>
             </div>
           ))}
-          {!orders.length && <Empty text="No orders yet." />}
+          {!orders.length && <Empty text="No orders recorded yet." />}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
-function Metric({ icon, label, value, note, warn }: any) {
+function Metric({ icon, label, value, note, warn, action, actionLabel }: any) {
   return (
-    <div className="rounded-2xl border border-black/8 bg-white p-5">
-      <div className="flex items-center justify-between text-ink/45">
-        <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
-        <span className="text-lg">{icon}</span>
+    <div className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm flex flex-col justify-between">
+      <div>
+        <div className="flex items-center justify-between text-ink/45">
+          <span className="text-xs font-bold uppercase tracking-wider">
+            {label}
+          </span>
+          <span className="text-lg">{icon}</span>
+        </div>
+        <p
+          className={`mt-4 text-3xl font-black tracking-tight ${
+            warn ? "text-amber-600" : "text-ink"
+          }`}
+        >
+          {value}
+        </p>
       </div>
-      <p
-        className={`mt-4 text-3xl font-black tracking-tight ${
-          warn ? "text-amber-600" : ""
-        }`}
-      >
-        {value}
-      </p>
-      {note && <p className="mt-1 text-xs text-ink/50">{note}</p>}
+      <div className="mt-2 pt-2 border-t border-black/5 flex items-center justify-between">
+        {note && <p className="text-xs text-ink/50">{note}</p>}
+        {action && (
+          <button
+            onClick={action}
+            className="text-xs font-bold text-ink hover:underline"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -642,7 +1037,7 @@ function Products({
   loading,
   request,
   refresh,
-  setNotice,
+  showToast,
   onGoToPromotions,
 }: any) {
   const toggleFeatured = async (p: Product) => {
@@ -652,24 +1047,25 @@ function Products({
         method: "POST",
         body: JSON.stringify({ id: p.id, isFeatured: next }),
       });
-      setNotice(
+      showToast(
         next
           ? `"${p.name}" pinned to Home spotlight.`
-          : `"${p.name}" unpinned from Home spotlight.`
+          : `"${p.name}" unpinned from Home spotlight.`,
+        "success"
       );
       if (refresh) await refresh();
     } catch (e: any) {
-      alert(e.message || "Failed to toggle featured status");
+      showToast(e.message || "Failed to toggle featured status", "error");
     }
   };
 
   return (
-    <section className="rounded-2xl border border-black/8 bg-white">
+    <section className="rounded-2xl border border-black/8 bg-white shadow-sm">
       <div className="flex flex-col justify-between gap-4 border-b border-black/8 p-5 md:flex-row md:items-center">
         <div>
           <h2 className="font-black tracking-[-.04em]">Catalog</h2>
           <p className="mt-1 text-xs text-ink/50">
-            Products, imagery, spotlight feature, pricing, and stock.
+            Products, imagery, spotlight feature, scheduled drops, and stock.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -693,7 +1089,7 @@ function Products({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[840px] text-left">
+        <table className="w-full min-w-[880px] text-left">
           <thead className="bg-[#f7f8f6] text-[10px] uppercase tracking-wider text-ink/45">
             <tr>
               <th className="p-4">Product</th>
@@ -702,7 +1098,7 @@ function Products({
               <th>Delivery</th>
               <th>Spotlight</th>
               <th>Stock</th>
-              <th>Status</th>
+              <th>Publish Status</th>
               <th></th>
             </tr>
           </thead>
@@ -722,6 +1118,12 @@ function Products({
                 p.isFreeDelivery ||
                 p.careInstructions?.includes("[FREE_DELIVERY]") ||
                 p.description?.includes("[FREE_DELIVERY]");
+
+              // Scheduled Drop status check (Item 1)
+              const isScheduled =
+                p.isScheduled &&
+                p.scheduledAt &&
+                new Date(p.scheduledAt).getTime() > Date.now();
 
               return (
                 <tr
@@ -810,15 +1212,34 @@ function Products({
                     {p.variants.reduce((n, v) => n + Number(v.stock), 0)}
                   </td>
                   <td>
-                    <span
-                      className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
-                        p.isPublished
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-stone-100 text-stone-600"
-                      }`}
-                    >
-                      {p.isPublished ? "Live" : "Draft"}
-                    </span>
+                    {isScheduled ? (
+                      <div className="flex flex-col">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-black text-violet-800 uppercase tracking-wide">
+                          <FiClock className="text-xs" /> Scheduled Drop
+                        </span>
+                        <span className="text-[10px] text-violet-900/70 mt-0.5 font-mono">
+                          {new Date(p.scheduledAt!).toLocaleDateString(
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </span>
+                      </div>
+                    ) : (
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
+                          p.isPublished
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-stone-100 text-stone-600"
+                        }`}
+                      >
+                        {p.isPublished ? "Live" : "Draft"}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <div className="flex gap-2">
@@ -830,7 +1251,7 @@ function Products({
                         <FiEdit2 />
                       </button>
                       <button
-                        onClick={() => onDelete(p.id)}
+                        onClick={() => onDelete(p.id, p.name)}
                         className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
                         title="Delete product"
                       >
@@ -863,14 +1284,16 @@ function Promotions({
   categories,
   request,
   refresh,
-  setNotice,
+  showToast,
+  showConfirm,
   onEdit,
 }: {
   products: Product[];
   categories: Category[];
   request: any;
   refresh: () => void;
-  setNotice: (val: string) => void;
+  showToast: (val: string, type?: "success" | "error" | "info") => void;
+  showConfirm: any;
   onEdit: (p: Product) => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -897,7 +1320,6 @@ function Promotions({
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derived calculations
   const discountedProducts = products.filter(
     (p) => p.discountPrice && Number(p.discountPrice) < Number(p.basePrice)
   );
@@ -911,7 +1333,6 @@ function Promotions({
 
   const featuredProducts = products.filter((p) => p.isFeatured);
 
-  // Filtered list based on search and filters
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const matchesSearch = p.name
@@ -938,7 +1359,6 @@ function Promotions({
     });
   }, [products, promoSearch, promoCategory, filterType]);
 
-  // Selection handlers
   const toggleSelectAllVisible = () => {
     const visibleIds = filteredProducts.map((p) => p.id);
     const allSelected = visibleIds.every((id) => selectedIds.includes(id));
@@ -955,15 +1375,14 @@ function Promotions({
     );
   };
 
-  // Bulk Discount Actions
   const applyDiscountToSelected = async (customPct?: number) => {
     const pct = customPct !== undefined ? customPct : Number(bulkPctInput);
     if (isNaN(pct) || pct <= 0 || pct >= 100) {
-      alert("Please enter a valid discount percentage (1% to 99%)");
+      showToast("Please enter a valid percentage between 1% and 99%.", "error");
       return;
     }
     if (selectedIds.length === 0) {
-      alert("Please select at least one product using the checkboxes.");
+      showToast("Please select at least one product using checkboxes.", "info");
       return;
     }
 
@@ -976,57 +1395,60 @@ function Promotions({
           discountPercent: pct,
         }),
       });
-      setNotice(
+      showToast(
         res.message ||
-          `Applied ${pct}% discount to ${selectedIds.length} selected products!`
+          `Applied ${pct}% discount to ${selectedIds.length} products.`,
+        "success"
       );
       setSelectedIds([]);
       await refresh();
     } catch (e: any) {
-      alert(e.message || "Failed to apply discount");
+      showToast(e.message || "Failed to apply discount", "error");
     } finally {
       setBusy(false);
     }
   };
 
-  const clearDiscountsFromSelected = async () => {
+  const clearDiscountsFromSelected = () => {
     if (selectedIds.length === 0) {
-      alert("Please select at least one product.");
+      showToast("Please select at least one product.", "info");
       return;
     }
-    if (
-      !confirm(
-        `Remove discount from ${selectedIds.length} selected product(s)?`
-      )
-    )
-      return;
 
-    setBusy(true);
-    try {
-      const res = await request("/admin/products/bulk-discount", {
-        method: "POST",
-        body: JSON.stringify({
-          productIds: selectedIds,
-          clearAll: true,
-        }),
-      });
-      setNotice(
-        res.message ||
-          `Discounts cleared from ${selectedIds.length} selected products.`
-      );
-      setSelectedIds([]);
-      await refresh();
-    } catch (e: any) {
-      alert(e.message || "Failed to clear discounts");
-    } finally {
-      setBusy(false);
-    }
+    showConfirm({
+      title: "Remove Discounts?",
+      message: `Remove promotional discounts from ${selectedIds.length} selected product(s)?`,
+      confirmText: "Remove Discounts",
+      isDestructive: false,
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          const res = await request("/admin/products/bulk-discount", {
+            method: "POST",
+            body: JSON.stringify({
+              productIds: selectedIds,
+              clearAll: true,
+            }),
+          });
+          showToast(
+            res.message ||
+              `Discounts cleared from ${selectedIds.length} products.`,
+            "success"
+          );
+          setSelectedIds([]);
+          await refresh();
+        } catch (e: any) {
+          showToast(e.message || "Failed to clear discounts", "error");
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   };
 
-  // Bulk Free Delivery Actions
   const updateFreeDeliverySelected = async (enable: boolean) => {
     if (selectedIds.length === 0) {
-      alert("Please select at least one product.");
+      showToast("Please select at least one product.", "info");
       return;
     }
 
@@ -1039,99 +1461,115 @@ function Promotions({
           enable,
         }),
       });
-      setNotice(
+      showToast(
         res.message ||
           (enable
-            ? `Free delivery enabled on ${selectedIds.length} selected products!`
-            : `Free delivery disabled on ${selectedIds.length} selected products.`)
+            ? `Free delivery enabled on ${selectedIds.length} items.`
+            : `Free delivery removed from ${selectedIds.length} items.`),
+        "success"
       );
       setSelectedIds([]);
       await refresh();
     } catch (e: any) {
-      alert(e.message || "Failed to update free delivery");
+      showToast(e.message || "Failed to update free delivery", "error");
     } finally {
       setBusy(false);
     }
   };
 
-  // Storewide Actions
-  const applySitewideDiscount = async () => {
+  const applySitewideDiscount = () => {
     const pct = Number(bulkPctInput);
     if (isNaN(pct) || pct <= 0 || pct >= 100) {
-      alert("Please enter a valid discount percentage (1% to 99%)");
+      showToast("Please enter a valid percentage between 1% and 99%.", "error");
       return;
     }
-    if (
-      !confirm(
-        `Are you sure you want to apply a ${pct}% discount to ALL ${products.length} products in your store?`
-      )
-    )
-      return;
 
-    setBusy(true);
-    try {
-      const res = await request("/admin/products/bulk-discount", {
-        method: "POST",
-        body: JSON.stringify({ discountPercent: pct }),
-      });
-      setNotice(res.message || `Applied ${pct}% discount to all products!`);
-      await refresh();
-    } catch (e: any) {
-      alert(e.message || "Failed to apply sitewide discount");
-    } finally {
-      setBusy(false);
-    }
+    showConfirm({
+      title: "Launch Sitewide Sale?",
+      message: `Apply ${pct}% discount to ALL ${products.length} products across your store?`,
+      confirmText: `Apply ${pct}% Sitewide`,
+      isDestructive: false,
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          const res = await request("/admin/products/bulk-discount", {
+            method: "POST",
+            body: JSON.stringify({ discountPercent: pct }),
+          });
+          showToast(
+            res.message || `Applied ${pct}% discount sitewide!`,
+            "success"
+          );
+          await refresh();
+        } catch (e: any) {
+          showToast(e.message || "Failed to apply sitewide discount", "error");
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   };
 
-  const clearAllDiscountsSitewide = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to remove discounts from ALL products storewide?"
-      )
-    )
-      return;
-
-    setBusy(true);
-    try {
-      const res = await request("/admin/products/bulk-discount", {
-        method: "POST",
-        body: JSON.stringify({ clearAll: true }),
-      });
-      setNotice(res.message || "All storewide discounts cleared.");
-      await refresh();
-    } catch (e: any) {
-      alert(e.message || "Failed to clear discounts");
-    } finally {
-      setBusy(false);
-    }
+  const clearAllDiscountsSitewide = () => {
+    showConfirm({
+      title: "Clear All Storewide Discounts?",
+      message:
+        "Are you sure you want to remove discounts from ALL products? All items will return to their regular base retail pricing.",
+      confirmText: "Clear All Discounts",
+      isDestructive: true,
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          const res = await request("/admin/products/bulk-discount", {
+            method: "POST",
+            body: JSON.stringify({ clearAll: true }),
+          });
+          showToast(
+            res.message || "All storewide discounts cleared.",
+            "success"
+          );
+          await refresh();
+        } catch (e: any) {
+          showToast(e.message || "Failed to clear discounts", "error");
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   };
 
-  const toggleSitewideFreeDelivery = async (enable: boolean) => {
-    const msg = enable
-      ? "Enable Free Delivery on ALL products in the catalog?"
-      : "Remove Free Delivery from ALL products in the catalog?";
-    if (!confirm(msg)) return;
-
-    setBusy(true);
-    try {
-      const res = await request("/admin/products/bulk-free-delivery", {
-        method: "POST",
-        body: JSON.stringify(
-          enable ? { enableAll: true } : { clearAll: true }
-        ),
-      });
-      setNotice(
-        res.message ||
-          (enable
-            ? "Free delivery enabled on all products."
-            : "Free delivery removed from all products.")
-      );
-      await refresh();
-    } catch (e: any) {
-      alert(e.message || "Failed to update free delivery");
-    } finally {
-      setBusy(false);
-    }
+  const toggleSitewideFreeDelivery = (enable: boolean) => {
+    showConfirm({
+      title: enable ? "Enable Free Delivery on All?" : "Remove Free Delivery?",
+      message: enable
+        ? "Enable Free Delivery badge and zero shipping on ALL catalog products?"
+        : "Remove Free Delivery badge from ALL catalog products?",
+      confirmText: enable ? "Enable on All" : "Remove Free Delivery",
+      isDestructive: !enable,
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          const res = await request("/admin/products/bulk-free-delivery", {
+            method: "POST",
+            body: JSON.stringify(
+              enable ? { enableAll: true } : { clearAll: true }
+            ),
+          });
+          showToast(
+            res.message ||
+              (enable
+                ? "Free delivery enabled on all products."
+                : "Free delivery removed from all products."),
+            "success"
+          );
+          await refresh();
+        } catch (e: any) {
+          showToast(e.message || "Failed to update free delivery", "error");
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   };
 
   const saveThreshold = async () => {
@@ -1143,13 +1581,14 @@ function Promotions({
           freeShippingThreshold: thresholdInput,
         }),
       });
-      setNotice(
+      showToast(
         thresholdInput === "0"
           ? "Storewide Free Delivery enabled on ALL orders!"
-          : `Free shipping threshold updated to ৳${thresholdInput}.`
+          : `Free shipping threshold updated to ৳${thresholdInput}.`,
+        "success"
       );
     } catch (e: any) {
-      alert(e.message || "Failed to save threshold");
+      showToast(e.message || "Failed to save threshold", "error");
     } finally {
       setSavingThreshold(false);
     }
@@ -1162,24 +1601,25 @@ function Promotions({
         method: "POST",
         body: JSON.stringify({ id: p.id, isFeatured: next }),
       });
-      setNotice(
+      showToast(
         next
           ? `"${p.name}" pinned to Home spotlight.`
-          : `"${p.name}" unpinned from Home spotlight.`
+          : `"${p.name}" unpinned from Home spotlight.`,
+        "success"
       );
       await refresh();
     } catch (e: any) {
-      alert(e.message || "Failed to toggle featured status");
+      showToast(e.message || "Failed to toggle featured status", "error");
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* 1. Header Overview & Initial State Status Cards */}
+      {/* 1. Header Overview & Status Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         {/* Discount Status Card */}
         <div
-          className={`rounded-2xl border p-5 transition-all ${
+          className={`rounded-2xl border p-5 shadow-sm transition-all ${
             discountedProducts.length === 0
               ? "border-amber-200 bg-amber-50/60"
               : "border-rose-200 bg-rose-50/70"
@@ -1244,7 +1684,7 @@ function Promotions({
 
         {/* Free Delivery Status Card */}
         <div
-          className={`rounded-2xl border p-5 transition-all ${
+          className={`rounded-2xl border p-5 shadow-sm transition-all ${
             freeDeliveryProducts.length === 0
               ? "border-stone-200 bg-stone-50"
               : "border-emerald-200 bg-emerald-50/70"
@@ -1306,7 +1746,7 @@ function Promotions({
         </div>
 
         {/* Free Shipping Minimum Threshold Card */}
-        <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-5">
+        <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-900">
               <FiShoppingBag className="text-sky-600" />
@@ -1362,7 +1802,6 @@ function Promotions({
 
       {/* 2. Products Multi-Select Manager Table */}
       <section className="rounded-2xl border border-black/8 bg-white shadow-sm">
-        {/* Table Filter Header */}
         <div className="flex flex-col gap-4 border-b border-black/8 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h3 className="font-black tracking-[-.03em] text-ink text-base">
@@ -1375,7 +1814,6 @@ function Promotions({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Search */}
             <div className="flex items-center gap-2 rounded-xl border border-black/10 bg-[#fbfbf9] px-3 py-2 text-xs text-ink/60">
               <FiSearch />
               <input
@@ -1387,7 +1825,6 @@ function Promotions({
               />
             </div>
 
-            {/* Category Filter */}
             <select
               value={promoCategory}
               onChange={(e) => setPromoCategory(e.target.value)}
@@ -1401,7 +1838,6 @@ function Promotions({
               ))}
             </select>
 
-            {/* Status Filter */}
             <select
               value={filterType}
               onChange={(e: any) => setFilterType(e.target.value)}
@@ -1412,7 +1848,8 @@ function Promotions({
                 Discounted On Sale ({discountedProducts.length})
               </option>
               <option value="NO_DISCOUNT">
-                Full Price Regular ({products.length - discountedProducts.length})
+                Full Price Regular (
+                {products.length - discountedProducts.length})
               </option>
               <option value="FREE_DELIVERY">
                 Free Delivery ({freeDeliveryProducts.length})
@@ -1424,7 +1861,6 @@ function Promotions({
           </div>
         </div>
 
-        {/* Selection Stats Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f8f9f7] px-5 py-3 border-b border-black/5 text-xs font-bold">
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -1464,7 +1900,6 @@ function Promotions({
           </div>
         </div>
 
-        {/* Products Table */}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[850px] text-left">
             <thead className="bg-[#f2f3f0] text-[10px] uppercase tracking-wider text-ink/45">
@@ -1501,9 +1936,7 @@ function Promotions({
                   <tr
                     key={p.id}
                     className={`border-t border-black/5 text-sm transition-colors ${
-                      isSelected
-                        ? "bg-lime/10"
-                        : "hover:bg-black/[0.015]"
+                      isSelected ? "bg-lime/10" : "hover:bg-black/[0.015]"
                     }`}
                   >
                     <td className="p-4">
@@ -1604,7 +2037,10 @@ function Promotions({
               })}
               {filteredProducts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-ink/50 text-sm">
+                  <td
+                    colSpan={8}
+                    className="p-8 text-center text-ink/50 text-sm"
+                  >
                     No products match the selected filters.
                   </td>
                 </tr>
@@ -1628,7 +2064,6 @@ function Promotions({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Discount Percentage Input & Quick Presets */}
               <div className="flex items-center gap-1.5 bg-white/10 p-1.5 rounded-xl border border-white/15">
                 <input
                   type="number"
@@ -1650,7 +2085,6 @@ function Promotions({
                 </button>
               </div>
 
-              {/* Clear Discount Button */}
               <button
                 type="button"
                 disabled={busy}
@@ -1660,7 +2094,6 @@ function Promotions({
                 Clear Discount
               </button>
 
-              {/* Free Delivery Toggles */}
               <button
                 type="button"
                 disabled={busy}
@@ -1683,7 +2116,7 @@ function Promotions({
       )}
 
       {/* 4. Sitewide Global Campaigns Section */}
-      <section className="rounded-2xl border border-black/8 bg-white p-6">
+      <section className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
         <h3 className="font-black tracking-[-.03em] text-ink text-base">
           Storewide Bulk Campaigns (All Products)
         </h3>
@@ -1792,11 +2225,11 @@ function Promotions({
 /* -------------------------------------------------------------------------- */
 function Orders({ orders, updateStatus }: any) {
   return (
-    <section className="rounded-2xl border border-black/8 bg-white">
+    <section className="rounded-2xl border border-black/8 bg-white shadow-sm">
       <div className="border-b border-black/8 p-5">
         <h2 className="font-black tracking-[-.04em]">Order desk</h2>
         <p className="mt-1 text-xs text-ink/50">
-          Confirm, pack, ship, and complete each order.
+          Confirm, pack, ship, and complete each customer order.
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -1818,7 +2251,7 @@ function Orders({ orders, updateStatus }: any) {
                 <td className="p-4 font-bold">
                   {o.orderNumber}
                   <span className="mt-1 block text-xs font-normal text-ink/45">
-                    {o.items.length} item(s)
+                    {o.items.length} item(s) · {o.district || "Dhaka"}
                   </span>
                 </td>
                 <td>
@@ -1887,47 +2320,349 @@ function Orders({ orders, updateStatus }: any) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                               INVENTORY VIEW                               */
+/*            INVENTORY TAB WITH ADVANCED FILTER & SORT (Item 8)             */
 /* -------------------------------------------------------------------------- */
-function Inventory({ products }: { products: Product[] }) {
-  const rows = products.flatMap((p) => p.variants.map((v) => ({ p, v })));
+function Inventory({
+  products,
+  categories,
+  onEditProduct,
+}: {
+  products: Product[];
+  categories: Category[];
+  onEditProduct: (p: Product) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [stockFilter, setStockFilter] = useState<
+    "ALL" | "OUT_OF_STOCK" | "LOW_STOCK" | "IN_STOCK"
+  >("ALL");
+  const [sizeFilter, setSizeFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState<
+    "STOCK_ASC" | "STOCK_DESC" | "NAME_ASC" | "NAME_DESC"
+  >("STOCK_ASC");
+
+  // Flatten products into variant rows
+  const allRows = useMemo(() => {
+    return products.flatMap((p) =>
+      p.variants.map((v) => ({
+        product: p,
+        variant: v,
+        key: `${p.id}-${v.id || v.size}-${v.color || "def"}`,
+      }))
+    );
+  }, [products]);
+
+  // Available unique sizes for filter
+  const availableSizes = useMemo(() => {
+    const set = new Set<string>();
+    allRows.forEach((r) => {
+      if (r.variant.size) set.add(r.variant.size.toUpperCase());
+    });
+    return Array.from(set).sort();
+  }, [allRows]);
+
+  // Summary Metrics
+  const totalStockUnits = allRows.reduce(
+    (sum, r) => sum + (Number(r.variant.stock) || 0),
+    0
+  );
+  const outOfStockVariants = allRows.filter((r) => Number(r.variant.stock) === 0);
+  const lowStockVariants = allRows.filter(
+    (r) => Number(r.variant.stock) > 0 && Number(r.variant.stock) < 5
+  );
+
+  // Filtered & Sorted Rows
+  const processedRows = useMemo(() => {
+    let result = allRows.filter((r) => {
+      const matchSearch =
+        r.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.variant.sku &&
+          r.variant.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (r.variant.color &&
+          r.variant.color.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      const matchCategory =
+        categoryFilter === "ALL" || r.product.categoryId === categoryFilter;
+
+      const matchSize =
+        sizeFilter === "ALL" ||
+        r.variant.size.toUpperCase() === sizeFilter.toUpperCase();
+
+      const st = Number(r.variant.stock) || 0;
+      let matchStock = true;
+      if (stockFilter === "OUT_OF_STOCK") matchStock = st === 0;
+      if (stockFilter === "LOW_STOCK") matchStock = st > 0 && st < 5;
+      if (stockFilter === "IN_STOCK") matchStock = st >= 5;
+
+      return matchSearch && matchCategory && matchSize && matchStock;
+    });
+
+    // Sort
+    result.sort((a, b) => {
+      const stockA = Number(a.variant.stock) || 0;
+      const stockB = Number(b.variant.stock) || 0;
+      if (sortBy === "STOCK_ASC") return stockA - stockB;
+      if (sortBy === "STOCK_DESC") return stockB - stockA;
+      if (sortBy === "NAME_ASC") return a.product.name.localeCompare(b.product.name);
+      if (sortBy === "NAME_DESC") return b.product.name.localeCompare(a.product.name);
+      return 0;
+    });
+
+    return result;
+  }, [allRows, searchTerm, categoryFilter, sizeFilter, stockFilter, sortBy]);
+
   return (
-    <section className="rounded-2xl border border-black/8 bg-white p-5">
-      <h2 className="font-black tracking-[-.04em]">Inventory</h2>
-      <p className="mt-1 text-xs text-ink/50">
-        Variant-level stock to keep your drop available.
-      </p>
-      <div className="mt-5 grid gap-3">
-        {rows.map(({ p, v }, i) => (
-          <div
-            key={`${p.id}-${i}`}
-            className="flex items-center justify-between rounded-xl bg-[#f7f8f6] p-4"
-          >
-            <div>
-              <p className="font-bold">{p.name}</p>
-              <p className="mt-1 text-xs text-ink/50">
-                {v.size}
-                {v.color ? ` · ${v.color}` : ""}
-                {v.sku ? ` · ${v.sku}` : ""}
-              </p>
-            </div>
-            <div className="text-right">
-              <p
-                className={`text-lg font-black ${
-                  v.stock < 5 ? "text-rose-600" : ""
-                }`}
-              >
-                {v.stock}
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-ink/45">
-                units in stock
-              </p>
-            </div>
+    <section className="space-y-6">
+      {/* 1. Inventory Summary Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm">
+          <span className="text-xs font-bold uppercase tracking-wider text-ink/45">
+            Total Inventory
+          </span>
+          <p className="mt-3 text-3xl font-black text-ink">
+            {totalStockUnits.toLocaleString()}
+          </p>
+          <p className="mt-1 text-xs text-ink/50">Units currently on hand</p>
+        </div>
+
+        <div className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm">
+          <span className="text-xs font-bold uppercase tracking-wider text-ink/45">
+            Tracked SKUs
+          </span>
+          <p className="mt-3 text-3xl font-black text-ink">{allRows.length}</p>
+          <p className="mt-1 text-xs text-ink/50">Across {products.length} styles</p>
+        </div>
+
+        <div
+          className={`rounded-2xl border p-5 shadow-sm transition-all ${
+            lowStockVariants.length > 0
+              ? "border-amber-200 bg-amber-50/70"
+              : "border-black/8 bg-white"
+          }`}
+        >
+          <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
+            Low Stock (&lt; 5 Units)
+          </span>
+          <p className="mt-3 text-3xl font-black text-amber-900">
+            {lowStockVariants.length}
+          </p>
+          <p className="mt-1 text-xs text-amber-800">Needs reordering soon</p>
+        </div>
+
+        <div
+          className={`rounded-2xl border p-5 shadow-sm transition-all ${
+            outOfStockVariants.length > 0
+              ? "border-rose-200 bg-rose-50/70"
+              : "border-black/8 bg-white"
+          }`}
+        >
+          <span className="text-xs font-bold uppercase tracking-wider text-rose-900">
+            Out of Stock (0 Units)
+          </span>
+          <p className="mt-3 text-3xl font-black text-rose-900">
+            {outOfStockVariants.length}
+          </p>
+          <p className="mt-1 text-xs text-rose-800">Requires restock batch</p>
+        </div>
+      </div>
+
+      {/* 2. Inventory Filter & Controls Bar */}
+      <div className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm space-y-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="font-black tracking-[-.04em] text-base text-ink">
+              Variant Inventory Matrix
+            </h2>
+            <p className="mt-0.5 text-xs text-ink/50">
+              Filter by stock status, size, and category with real-time sorting.
+            </p>
           </div>
-        ))}
-        {!rows.length && (
-          <Empty text="Add sizes and stock when you create a product." />
-        )}
+
+          <span className="text-xs font-bold text-ink/60">
+            Showing {processedRows.length} of {allRows.length} variant rows
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {/* Search */}
+          <div className="flex items-center gap-2 rounded-xl border border-black/10 bg-[#fbfbf9] px-3 py-2 text-xs text-ink/60">
+            <FiSearch />
+            <input
+              type="text"
+              placeholder="Search product / SKU…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-transparent outline-none w-full"
+            />
+          </div>
+
+          {/* Category Filter */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded-xl border border-black/10 bg-[#fbfbf9] px-3 py-2 text-xs font-bold text-ink outline-none"
+          >
+            <option value="ALL">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Stock Level Filter */}
+          <select
+            value={stockFilter}
+            onChange={(e: any) => setStockFilter(e.target.value)}
+            className="rounded-xl border border-black/10 bg-[#fbfbf9] px-3 py-2 text-xs font-bold text-ink outline-none"
+          >
+            <option value="ALL">All Stock Levels</option>
+            <option value="LOW_STOCK">
+              Low Stock (&lt; 5 Units) ({lowStockVariants.length})
+            </option>
+            <option value="OUT_OF_STOCK">
+              Out of Stock (0 Units) ({outOfStockVariants.length})
+            </option>
+            <option value="IN_STOCK">Well Stocked (≥ 5 Units)</option>
+          </select>
+
+          {/* Size Filter */}
+          <select
+            value={sizeFilter}
+            onChange={(e) => setSizeFilter(e.target.value)}
+            className="rounded-xl border border-black/10 bg-[#fbfbf9] px-3 py-2 text-xs font-bold text-ink outline-none"
+          >
+            <option value="ALL">All Sizes</option>
+            {availableSizes.map((s) => (
+              <option key={s} value={s}>
+                Size {s}
+              </option>
+            ))}
+          </select>
+
+          {/* Sorting */}
+          <select
+            value={sortBy}
+            onChange={(e: any) => setSortBy(e.target.value)}
+            className="rounded-xl border border-black/10 bg-ink px-3 py-2 text-xs font-bold text-white outline-none"
+          >
+            <option value="STOCK_ASC">Stock: Low to High (Restock First)</option>
+            <option value="STOCK_DESC">Stock: High to Low</option>
+            <option value="NAME_ASC">Name: A to Z</option>
+            <option value="NAME_DESC">Name: Z to A</option>
+          </select>
+        </div>
+      </div>
+
+      {/* 3. Detailed Inventory Table */}
+      <div className="rounded-2xl border border-black/8 bg-white shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left">
+            <thead className="bg-[#f7f8f6] text-[10px] uppercase tracking-wider text-ink/45">
+              <tr>
+                <th className="p-4">Product Style</th>
+                <th>Category</th>
+                <th>Size</th>
+                <th>Colorway</th>
+                <th>SKU</th>
+                <th>Stock Status</th>
+                <th className="text-right p-4">Units</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5 text-sm">
+              {processedRows.map(({ product, variant, key }) => {
+                const count = Number(variant.stock) || 0;
+                return (
+                  <tr
+                    key={key}
+                    className="hover:bg-black/[0.015] transition-colors"
+                  >
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-9 rounded-lg bg-black/5 overflow-hidden flex-shrink-0">
+                          {product.images?.[0] && (
+                            <img
+                              src={product.images[0].url}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-ink">{product.name}</p>
+                          <p className="text-xs text-ink/40">/{product.slug}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="text-xs text-ink/60 font-medium">
+                      {product.category?.name || "Uncategorized"}
+                    </td>
+                    <td>
+                      <span className="inline-block rounded-md bg-black/5 px-2.5 py-1 text-xs font-black text-ink">
+                        {variant.size}
+                      </span>
+                    </td>
+                    <td className="text-xs text-ink/75 font-semibold">
+                      {variant.color || "Standard"}
+                    </td>
+                    <td className="text-xs font-mono text-ink/45">
+                      {variant.sku || "—"}
+                    </td>
+                    <td>
+                      {count === 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-rose-700">
+                          Out of Stock
+                        </span>
+                      ) : count < 5 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-amber-800">
+                          Low Stock
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-emerald-800">
+                          In Stock
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-right p-4">
+                      <span
+                        className={`text-base font-black ${
+                          count === 0
+                            ? "text-rose-600"
+                            : count < 5
+                            ? "text-amber-600"
+                            : "text-ink"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => onEditProduct(product)}
+                        className="rounded-lg p-2 text-ink/50 hover:bg-black/5 hover:text-ink"
+                        title="Edit product stock in studio"
+                      >
+                        <FiEdit2 />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {processedRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="p-8 text-center text-ink/50 text-sm"
+                  >
+                    No variant inventory matches your search and filter criteria.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );
@@ -1947,10 +2682,10 @@ function Customers({ orders }: { orders: Order[] }) {
     }, {})
   );
   return (
-    <section className="rounded-2xl border border-black/8 bg-white p-5">
+    <section className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm">
       <h2 className="font-black tracking-[-.04em]">Customers</h2>
       <p className="mt-1 text-xs text-ink/50">
-        Customer history collected through orders.
+        Customer history collected through orders across Bangladesh.
       </p>
       <div className="mt-5 space-y-2">
         {(customers as any[]).map((c) => (
@@ -1983,12 +2718,14 @@ function Categories({
   categories,
   request,
   refresh,
-  setNotice,
+  showToast,
+  showConfirm,
 }: {
   categories: Category[];
   request: any;
   refresh: () => void;
-  setNotice: (value: string) => void;
+  showToast: (msg: string, type?: "success" | "error" | "info") => void;
+  showConfirm: any;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -2009,36 +2746,41 @@ function Categories({
       });
       setName("");
       setDescription("");
-      setNotice("Category created.");
+      showToast("Category created successfully.", "success");
       refresh();
     } catch (error: any) {
-      setNotice(error.message || "Could not create category.");
+      showToast(error.message || "Could not create category.", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const remove = async (category: Category) => {
-    if (
-      !confirm(
-        `Delete ${category.name}? Products in this category must be moved first.`
-      )
-    )
-      return;
-    try {
-      await request(`/categories/admin/${category.id}`, { method: "DELETE" });
-      setNotice("Category deleted.");
-      refresh();
-    } catch (error: any) {
-      setNotice(error.message || "Could not delete category.");
-    }
+  const remove = (category: Category) => {
+    showConfirm({
+      title: `Delete Category "${category.name}"?`,
+      message:
+        "Products in this category must be reassigned. Are you sure you want to proceed?",
+      confirmText: "Delete Category",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await request(`/categories/admin/${category.id}`, {
+            method: "DELETE",
+          });
+          showToast("Category deleted.", "success");
+          refresh();
+        } catch (error: any) {
+          showToast(error.message || "Could not delete category.", "error");
+        }
+      },
+    });
   };
 
   return (
     <div className="grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
       <form
         onSubmit={create}
-        className="rounded-2xl border border-black/8 bg-white p-5"
+        className="rounded-2xl border border-black/8 bg-white p-5 shadow-sm"
       >
         <h2 className="font-black tracking-[-.04em]">Create category</h2>
         <p className="mt-1 text-xs text-ink/50">
@@ -2050,7 +2792,7 @@ function Categories({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-black/10 p-3 text-sm font-normal"
+            className="mt-2 w-full rounded-xl border border-black/10 p-3 text-sm font-normal outline-none focus:border-ink"
             placeholder="Hoodies"
           />
         </label>
@@ -2059,7 +2801,7 @@ function Categories({
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="mt-2 min-h-24 w-full rounded-xl border border-black/10 p-3 text-sm font-normal"
+            className="mt-2 min-h-24 w-full rounded-xl border border-black/10 p-3 text-sm font-normal outline-none focus:border-ink"
             placeholder="Optional category description"
           />
         </label>
@@ -2070,7 +2812,7 @@ function Categories({
           {saving ? "Creating…" : "Create category"}
         </button>
       </form>
-      <section className="rounded-2xl border border-black/8 bg-white">
+      <section className="rounded-2xl border border-black/8 bg-white shadow-sm">
         <div className="border-b border-black/8 p-5">
           <h2 className="font-black tracking-[-.04em]">Categories</h2>
         </div>
@@ -2102,31 +2844,51 @@ function Categories({
 }
 
 /* -------------------------------------------------------------------------- */
-/*                         STORE SETTINGS REDESIGN                            */
+/*                   STORE SETTINGS (Item 3 & Item 5)                         */
 /* -------------------------------------------------------------------------- */
-function Settings({ request, setNotice }: any) {
+function Settings({
+  request,
+  showToast,
+}: {
+  request: any;
+  showToast: (msg: string, type?: "success" | "error" | "info") => void;
+}) {
   const [form, setForm] = useState({
     storeName: "OOFY",
     storeTagline: "Wear Your Confidence",
-    contactEmail: "",
-    deliveryCharge: "60",
+    contactEmail: "oofybrand@gmail.com",
+    deliveryChargeInsideDhaka: "60",
+    deliveryChargeOutsideDhaka: "100",
     freeShippingThreshold: "2000",
+    customAnnouncement: "",
     codEnabled: true,
   });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     request("/admin/settings")
-      .then(
-        (r: any) =>
-          r.data &&
+      .then((r: any) => {
+        if (r.data) {
           setForm({
-            ...form,
-            ...r.data,
-            deliveryCharge: String(r.data.deliveryCharge || 60),
-            freeShippingThreshold: String(r.data.freeShippingThreshold || ""),
-          })
-      )
+            storeName: r.data.storeName || "OOFY",
+            storeTagline: r.data.storeTagline || "Wear Your Confidence",
+            contactEmail: r.data.contactEmail || "oofybrand@gmail.com",
+            deliveryChargeInsideDhaka: String(
+              r.data.deliveryChargeInsideDhaka ?? r.data.deliveryCharge ?? 60
+            ),
+            deliveryChargeOutsideDhaka: String(
+              r.data.deliveryChargeOutsideDhaka ?? 100
+            ),
+            freeShippingThreshold:
+              r.data.freeShippingThreshold !== null &&
+              r.data.freeShippingThreshold !== undefined
+                ? String(r.data.freeShippingThreshold)
+                : "2000",
+            customAnnouncement: r.data.customAnnouncement || "",
+            codEnabled: r.data.codEnabled ?? true,
+          });
+        }
+      })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2138,9 +2900,9 @@ function Settings({ request, setNotice }: any) {
         method: "PUT",
         body: JSON.stringify(form),
       });
-      setNotice("Store settings saved successfully.");
+      showToast("Store settings saved successfully.", "success");
     } catch (err: any) {
-      setNotice(err.message || "Failed to save settings.");
+      showToast(err.message || "Failed to save settings.", "error");
     } finally {
       setSaving(false);
     }
@@ -2148,14 +2910,15 @@ function Settings({ request, setNotice }: any) {
 
   return (
     <form onSubmit={save} className="max-w-4xl space-y-6">
-      {/* Settings Header */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black tracking-[-.04em] text-ink">
-            Store Settings
+            Store Settings & Rules
           </h2>
           <p className="mt-1 text-xs text-ink/50">
-            Configure brand identity, nationwide delivery pricing, thresholds, and payment methods.
+            Configure Dhaka vs Outside Dhaka shipping rates, minimum free delivery
+            threshold, and announcement marquee.
           </p>
         </div>
         <button
@@ -2167,8 +2930,8 @@ function Settings({ request, setNotice }: any) {
         </button>
       </div>
 
-      {/* Card 1: Brand & Identity */}
-      <div className="rounded-2xl border border-black/8 bg-white p-6">
+      {/* Card 1: Brand Profile */}
+      <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
           <FiBox className="text-base text-ink/60" />
           Brand Profile & Identity
@@ -2200,7 +2963,7 @@ function Settings({ request, setNotice }: any) {
             />
           </label>
           <label className="text-xs font-bold uppercase tracking-wider sm:col-span-2">
-            Support & Notification Email
+            Support Email
             <input
               type="email"
               value={form.contactEmail}
@@ -2214,36 +2977,53 @@ function Settings({ request, setNotice }: any) {
         </div>
       </div>
 
-      {/* Card 2: Nationwide Delivery & Threshold */}
-      <div className="rounded-2xl border border-black/8 bg-white p-6">
+      {/* Card 2: Location-Based Delivery Charges (Item 3) */}
+      <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
           <FiTruck className="text-base text-emerald-600" />
-          Nationwide Delivery Rules & Free Shipping
+          Location Delivery Charges & Free Shipping Rules
         </h3>
         <p className="mt-1 text-xs text-ink/50">
-          Delivery rates charged at checkout for customers across Bangladesh.
+          Manage separate delivery fees for Dhaka and Outside Dhaka districts.
         </p>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
           <label className="text-xs font-bold uppercase tracking-wider">
-            Standard Delivery Fee (৳)
+            Inside Dhaka Delivery (৳)
             <input
               type="number"
               min="0"
-              value={form.deliveryCharge}
+              value={form.deliveryChargeInsideDhaka}
               onChange={(e) =>
-                setForm({ ...form, deliveryCharge: e.target.value })
+                setForm({ ...form, deliveryChargeInsideDhaka: e.target.value })
               }
-              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-normal outline-none focus:border-ink"
+              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-ink"
               placeholder="60"
             />
             <span className="mt-1.5 block text-[11px] text-ink/45 font-normal">
-              Default courier delivery charge inside & outside Dhaka.
+              Applied when customer selects Dhaka district.
             </span>
           </label>
 
           <label className="text-xs font-bold uppercase tracking-wider">
-            Free Shipping Minimum Threshold (৳)
+            Outside Dhaka Delivery (৳)
+            <input
+              type="number"
+              min="0"
+              value={form.deliveryChargeOutsideDhaka}
+              onChange={(e) =>
+                setForm({ ...form, deliveryChargeOutsideDhaka: e.target.value })
+              }
+              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-ink"
+              placeholder="100"
+            />
+            <span className="mt-1.5 block text-[11px] text-ink/45 font-normal">
+              Applied for all other 63 districts in Bangladesh.
+            </span>
+          </label>
+
+          <label className="text-xs font-bold uppercase tracking-wider">
+            Free Shipping Threshold (৳)
             <input
               type="number"
               min="0"
@@ -2251,35 +3031,37 @@ function Settings({ request, setNotice }: any) {
               onChange={(e) =>
                 setForm({ ...form, freeShippingThreshold: e.target.value })
               }
-              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-normal outline-none focus:border-ink"
+              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-ink"
               placeholder="2000"
             />
             <span className="mt-1.5 block text-[11px] text-ink/45 font-normal">
-              Orders equal to or exceeding this subtotal receive free shipping.
+              Orders at or above this subtotal ship 100% free.
             </span>
           </label>
         </div>
 
-        {/* Storewide Free Delivery Quick Toggle */}
+        {/* Storewide Free Delivery Toggle */}
         <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
               checked={
-                form.deliveryCharge === "0" ||
-                form.freeShippingThreshold === "0"
+                form.deliveryChargeInsideDhaka === "0" &&
+                form.deliveryChargeOutsideDhaka === "0"
               }
               onChange={(e) => {
                 if (e.target.checked) {
                   setForm({
                     ...form,
-                    deliveryCharge: "0",
+                    deliveryChargeInsideDhaka: "0",
+                    deliveryChargeOutsideDhaka: "0",
                     freeShippingThreshold: "0",
                   });
                 } else {
                   setForm({
                     ...form,
-                    deliveryCharge: "60",
+                    deliveryChargeInsideDhaka: "60",
+                    deliveryChargeOutsideDhaka: "100",
                     freeShippingThreshold: "2000",
                   });
                 }
@@ -2288,18 +3070,61 @@ function Settings({ request, setNotice }: any) {
             />
             <div>
               <span className="text-sm font-bold text-emerald-950 block">
-                Free Delivery on ALL Orders (Storewide ৳0 Delivery)
+                Free Delivery on ALL Orders (Storewide ৳0 Shipping)
               </span>
               <span className="text-xs text-emerald-800">
-                When enabled, delivery fee is zeroed for all customers regardless of cart contents.
+                Zeros delivery fee across all districts regardless of order size.
               </span>
             </div>
           </label>
         </div>
       </div>
 
-      {/* Card 3: Payment Methods */}
-      <div className="rounded-2xl border border-black/8 bg-white p-6">
+      {/* Card 3: Top Announcement Bar Marquee (Item 5) */}
+      <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
+        <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
+          <FiTag className="text-base text-ink/60" />
+          Storefront Top Announcement Bar
+        </h3>
+        <p className="mt-1 text-xs text-ink/50">
+          The ticker shown at the top of the homepage. Leave blank to automatically
+          generate based on your Free Shipping Threshold.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <label className="block text-xs font-bold uppercase tracking-wider">
+            Custom Marquee Announcement Text
+            <input
+              value={form.customAnnouncement}
+              onChange={(e) =>
+                setForm({ ...form, customAnnouncement: e.target.value })
+              }
+              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-normal outline-none focus:border-ink"
+              placeholder="e.g. SPECIAL WINTER DROP ✦ 15% OFF ON SELECTED HOODIES"
+            />
+          </label>
+
+          {/* Live Preview Box */}
+          <div className="rounded-xl border border-black/5 bg-[#121512] p-3 text-white text-center text-xs font-bold tracking-wider uppercase">
+            <span className="text-white/40 mr-2 text-[10px]">Preview:</span>
+            <span>
+              {form.customAnnouncement.trim()
+                ? form.customAnnouncement.trim()
+                : form.freeShippingThreshold &&
+                  Number(form.freeShippingThreshold) > 0
+                ? `FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳${Number(
+                    form.freeShippingThreshold
+                  ).toLocaleString("en-BD")} ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE`
+                : form.freeShippingThreshold === "0"
+                ? "100% FREE DELIVERY NATIONWIDE ON ALL ORDERS ✦ CASH ON DELIVERY AVAILABLE"
+                : "CASH ON DELIVERY AVAILABLE NATIONWIDE"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Card 4: Payment Methods */}
+      <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
           <FiShoppingBag className="text-base text-ink/60" />
           Payment Methods
@@ -2340,10 +3165,18 @@ function Settings({ request, setNotice }: any) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                 FULL-PAGE STUDIO PRODUCT EDITOR (REDESIGN)                 */
+/*                 PRODUCT STUDIO EDITOR (Item 1, 2, 7)                       */
 /* -------------------------------------------------------------------------- */
-function ProductEditor({ product, request, close, saved }: any) {
+function ProductEditor({ product, request, close, showToast, saved }: any) {
   const [categories, setCategories] = useState<Category[]>([]);
+
+  // Check if product is currently scheduled (Item 1)
+  const isInitiallyScheduled = Boolean(
+    product?.isScheduled ||
+      (product?.scheduledAt &&
+        new Date(product.scheduledAt).getTime() > Date.now())
+  );
+
   const [form, setForm] = useState({
     name: product?.name || "",
     description: product?.description || "",
@@ -2369,25 +3202,23 @@ function ProductEditor({ product, request, close, saved }: any) {
     variants: product?.variants?.length
       ? product.variants
       : [
-          { size: "XS", color: "Black", stock: 0, sku: "" },
-          { size: "S", color: "Black", stock: 0, sku: "" },
-          { size: "M", color: "Black", stock: 0, sku: "" },
-          { size: "L", color: "Black", stock: 0, sku: "" },
-          { size: "XL", color: "Black", stock: 0, sku: "" },
-          { size: "XXL", color: "Black", stock: 0, sku: "" },
+          { size: "S", color: "Black", stock: 10, sku: "" },
+          { size: "M", color: "Black", stock: 15, sku: "" },
+          { size: "L", color: "Black", stock: 15, sku: "" },
+          { size: "XL", color: "Black", stock: 10, sku: "" },
         ],
   });
 
-  // Scheduling State
+  // Scheduling State (Item 1)
   const [publishMode, setPublishMode] = useState<"NOW" | "SCHEDULED">(
-    product?.isScheduled ? "SCHEDULED" : "NOW"
+    isInitiallyScheduled ? "SCHEDULED" : "NOW"
   );
+
   const [scheduledDate, setScheduledDate] = useState(() => {
     if (product?.scheduledAt) {
       const d = new Date(product.scheduledAt);
       return !isNaN(d.getTime()) ? d.toISOString().slice(0, 16) : "";
     }
-    // Default 48h from now
     const later = new Date(Date.now() + 48 * 3600 * 1000);
     return later.toISOString().slice(0, 16);
   });
@@ -2406,7 +3237,7 @@ function ProductEditor({ product, request, close, saved }: any) {
       .catch((error: Error) => setError(error.message));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derived automatic slug (Requirement 6: no manual slug input in form)
+  // Derived automatic slug (Item 6)
   const autoSlug = useMemo(() => {
     return (
       form.name
@@ -2417,24 +3248,23 @@ function ProductEditor({ product, request, close, saved }: any) {
     );
   }, [form.name]);
 
-  // Multiple Image Upload Handler (Requirement 7)
+  // Multiple Image Upload Handler (Item 7)
   const handleMultipleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
     setError("");
     const fileArray = Array.from(files);
-    let uploadedCount = 0;
     const newImages: { url: string; alt?: string }[] = [];
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
       if (!file.type.startsWith("image/")) {
-        setError("Only image files (JPG, PNG, WebP) are supported.");
+        showToast(`"${file.name}" is not an image.`, "error");
         continue;
       }
       if (file.size > 8 * 1024 * 1024) {
-        setError(`File "${file.name}" exceeds 8 MB.`);
+        showToast(`"${file.name}" exceeds 8 MB limit.`, "error");
         continue;
       }
 
@@ -2451,40 +3281,76 @@ function ProductEditor({ product, request, close, saved }: any) {
         });
         if (data.data?.url) {
           newImages.push({ url: data.data.url });
-          uploadedCount++;
         }
       } catch (err: any) {
-        setError(err.message || `Failed to upload "${file.name}".`);
+        showToast(err.message || `Failed to upload "${file.name}".`, "error");
       }
     }
 
     if (newImages.length > 0) {
       setImages((curr) => [...curr, ...newImages]);
+      showToast(`Added ${newImages.length} image(s).`, "success");
     }
     setUploading(false);
     setUploadProgressText("");
   };
 
-  // Set clicked image as index 0 (Card Cover)
   const makeCardCover = (index: number) => {
     if (index === 0) return;
     const target = images[index];
     const remaining = images.filter((_, idx) => idx !== index);
     setImages([target, ...remaining]);
+    showToast("Main card cover updated.", "success");
   };
 
   const removeImage = (index: number) => {
     setImages(images.filter((_, idx) => idx !== index));
   };
 
-  // Schedule Quick Preset Chips (Requirement 8)
   const setPresetSchedule = (hours: number) => {
     const d = new Date(Date.now() + hours * 3600 * 1000);
     setScheduledDate(d.toISOString().slice(0, 16));
     setPublishMode("SCHEDULED");
   };
 
-  // Form Submit
+  // Quick Size Adders (Item 2 - Sizes & Stock UI Fix)
+  const addSizePreset = (sizeLabel: string) => {
+    const exists = form.variants.some(
+      (v) => v.size.toUpperCase() === sizeLabel.toUpperCase()
+    );
+    if (exists) {
+      showToast(`Size ${sizeLabel} is already in the list.`, "info");
+      return;
+    }
+    setForm({
+      ...form,
+      variants: [
+        ...form.variants,
+        { size: sizeLabel, color: "Black", stock: 10, sku: "" },
+      ],
+    });
+  };
+
+  const addStandardBatch = () => {
+    const std = ["S", "M", "L", "XL", "XXL"];
+    const existingSizes = new Set(form.variants.map((v) => v.size.toUpperCase()));
+    const toAdd = std
+      .filter((s) => !existingSizes.has(s))
+      .map((size) => ({ size, color: "Black", stock: 10, sku: "" }));
+
+    if (toAdd.length === 0) {
+      showToast("Standard sizes (S-XXL) already present.", "info");
+      return;
+    }
+
+    setForm({
+      ...form,
+      variants: [...form.variants, ...toAdd],
+    });
+    showToast(`Added ${toAdd.length} standard sizes.`, "success");
+  };
+
+  // Submit Handler
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -2557,17 +3423,19 @@ function ProductEditor({ product, request, close, saved }: any) {
           </button>
           <div className="hidden sm:block">
             <h1 className="text-base font-black tracking-tight text-ink flex items-center gap-2">
-              {product ? `Editing: ${form.name || "Untitled Drop"}` : "Product Studio — New Drop"}
+              {product
+                ? `Editing: ${form.name || "Untitled Drop"}`
+                : "Product Studio — New Drop"}
               {publishMode === "SCHEDULED" ? (
-                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black text-violet-800 uppercase">
-                  Scheduled
+                <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-black text-violet-800 uppercase flex items-center gap-1">
+                  <FiClock /> Scheduled Drop
                 </span>
               ) : form.published ? (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800 uppercase">
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black text-emerald-800 uppercase">
                   Ready to Publish
                 </span>
               ) : (
-                <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-700 uppercase">
+                <span className="rounded-full bg-stone-100 px-2.5 py-0.5 text-[10px] font-black text-stone-700 uppercase">
                   Draft
                 </span>
               )}
@@ -2594,7 +3462,9 @@ function ProductEditor({ product, request, close, saved }: any) {
             ) : (
               <>
                 <FiCheck />
-                {publishMode === "SCHEDULED" ? "Schedule Drop" : "Publish Product"}
+                {publishMode === "SCHEDULED"
+                  ? "Schedule Drop"
+                  : "Publish Product"}
               </>
             )}
           </button>
@@ -2610,10 +3480,13 @@ function ProductEditor({ product, request, close, saved }: any) {
           </div>
         )}
 
-        <form onSubmit={submit} className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <form
+          onSubmit={submit}
+          className="grid grid-cols-1 gap-8 lg:grid-cols-12"
+        >
           {/* Left / Primary Column (7 cols) */}
           <div className="space-y-6 lg:col-span-7">
-            {/* Card: Core Information */}
+            {/* Card 1: Core Information */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black uppercase tracking-wider text-ink">
                 1. Core Drop Information
@@ -2628,7 +3501,9 @@ function ProductEditor({ product, request, close, saved }: any) {
                   <input
                     required
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, name: e.target.value })
+                    }
                     className="mt-2 w-full rounded-xl border border-black/10 bg-[#fbfbf9] px-4 py-3 text-sm font-bold text-ink outline-none focus:border-ink focus:bg-white"
                     placeholder="e.g. OVERSIZED HEAVYWEIGHT BOX TEE"
                   />
@@ -2686,109 +3561,161 @@ function ProductEditor({ product, request, close, saved }: any) {
               </div>
             </div>
 
-            {/* Card: Sizes & Inventory Matrix */}
+            {/* Card 2: Sizes & Stock Inventory (Item 2 Redesign) */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-black/5 pb-4">
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider text-ink">
                     2. Sizes & Stock Inventory
                   </h3>
                   <p className="mt-1 text-xs text-ink/50">
-                    Each size is independently tracked in the bag and orders.
+                    Each size has dedicated variant stock and SKU tracking.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-bold text-ink">
+                  <span className="rounded-full bg-lime px-3 py-1 text-xs font-black text-ink">
                     Total: {totalStock} units
                   </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        variants: [
-                          ...form.variants,
-                          { size: "", color: "Black", stock: 0, sku: "" },
-                        ],
-                      })
-                    }
-                    className="flex items-center gap-1 rounded-xl bg-black/5 px-3 py-1.5 text-xs font-bold text-ink hover:bg-black/10"
-                  >
-                    <FiPlus /> Add Size
-                  </button>
                 </div>
               </div>
 
-              <div className="mt-5 space-y-2">
-                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-2 text-[10px] font-bold uppercase tracking-wider text-ink/40">
-                  <span>Size Label</span>
-                  <span>Colorway</span>
-                  <span>Units in Stock</span>
-                  <span></span>
-                </div>
-
-                {form.variants.map((v: Variant, index: number) => (
-                  <div
-                    key={index}
-                    className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center rounded-xl bg-[#fbfbf9] p-2 border border-black/5"
+              {/* Quick Size Presets Bar */}
+              <div className="mt-4 flex flex-wrap items-center gap-1.5 bg-[#fbfbf9] p-3 rounded-xl border border-black/5">
+                <span className="text-[11px] font-bold text-ink/40 mr-1">
+                  Quick Add:
+                </span>
+                {["XS", "S", "M", "L", "XL", "XXL"].map((sz) => (
+                  <button
+                    key={sz}
+                    type="button"
+                    onClick={() => addSizePreset(sz)}
+                    className="rounded-lg border border-black/10 bg-white px-2.5 py-1 text-xs font-bold text-ink hover:bg-black/5 hover:border-black/30 transition-all"
                   >
-                    <input
-                      required
-                      value={v.size}
-                      onChange={(e) => {
-                        const next = [...form.variants];
-                        next[index].size = e.target.value;
-                        setForm({ ...form, variants: next });
-                      }}
-                      placeholder="e.g. L"
-                      className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-bold uppercase outline-none focus:border-ink"
-                    />
-
-                    <input
-                      value={v.color || ""}
-                      onChange={(e) => {
-                        const next = [...form.variants];
-                        next[index].color = e.target.value;
-                        setForm({ ...form, variants: next });
-                      }}
-                      placeholder="Black"
-                      className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:border-ink"
-                    />
-
-                    <input
-                      type="number"
-                      min="0"
-                      value={v.stock}
-                      onChange={(e) => {
-                        const next = [...form.variants];
-                        next[index].stock = Number(e.target.value) || 0;
-                        setForm({ ...form, variants: next });
-                      }}
-                      placeholder="0"
-                      className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-ink"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          variants: form.variants.filter(
-                            (_, i) => i !== index
-                          ),
-                        })
-                      }
-                      className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 transition-colors"
-                      title="Remove size"
-                    >
-                      <FiTrash2 />
-                    </button>
-                  </div>
+                    + {sz}
+                  </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={addStandardBatch}
+                  className="rounded-lg bg-black/5 px-3 py-1 text-xs font-bold text-ink hover:bg-black/10 ml-auto"
+                >
+                  + Add S-XXL Set
+                </button>
+              </div>
+
+              {/* Beautiful Aligned Table */}
+              <div className="mt-4 overflow-hidden rounded-xl border border-black/8">
+                <table className="w-full text-left">
+                  <thead className="bg-[#f7f8f6] text-[10px] uppercase tracking-wider text-ink/45 border-b border-black/8">
+                    <tr>
+                      <th className="py-2.5 px-3 w-24">Size</th>
+                      <th className="py-2.5 px-3">Colorway</th>
+                      <th className="py-2.5 px-3 w-32">Units in Stock</th>
+                      <th className="py-2.5 px-3 w-32">SKU (Opt)</th>
+                      <th className="py-2.5 px-3 w-12 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/5 bg-white">
+                    {form.variants.map((v: Variant, index: number) => (
+                      <tr
+                        key={index}
+                        className="hover:bg-black/[0.015] transition-colors"
+                      >
+                        <td className="py-2.5 px-3">
+                          <input
+                            required
+                            value={v.size}
+                            onChange={(e) => {
+                              const next = [...form.variants];
+                              next[index].size = e.target.value.toUpperCase();
+                              setForm({ ...form, variants: next });
+                            }}
+                            placeholder="M"
+                            className="w-full rounded-lg border border-black/15 bg-white px-2.5 py-1.5 text-xs font-black uppercase text-ink outline-none focus:border-ink"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <input
+                            value={v.color || ""}
+                            onChange={(e) => {
+                              const next = [...form.variants];
+                              next[index].color = e.target.value;
+                              setForm({ ...form, variants: next });
+                            }}
+                            placeholder="Black"
+                            className="w-full rounded-lg border border-black/15 bg-white px-2.5 py-1.5 text-xs text-ink outline-none focus:border-ink"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="0"
+                              value={v.stock}
+                              onChange={(e) => {
+                                const next = [...form.variants];
+                                next[index].stock =
+                                  Number(e.target.value) || 0;
+                                setForm({ ...form, variants: next });
+                              }}
+                              placeholder="0"
+                              className="w-full rounded-lg border border-black/15 bg-white px-2.5 py-1.5 text-xs font-bold text-ink outline-none focus:border-ink"
+                            />
+                            {Number(v.stock) === 0 && (
+                              <span
+                                className="h-2 w-2 rounded-full bg-rose-500 flex-shrink-0"
+                                title="Out of stock"
+                              />
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <input
+                            value={v.sku || ""}
+                            onChange={(e) => {
+                              const next = [...form.variants];
+                              next[index].sku = e.target.value;
+                              setForm({ ...form, variants: next });
+                            }}
+                            placeholder="OOFY-TEE-01"
+                            className="w-full rounded-lg border border-black/15 bg-white px-2.5 py-1.5 text-xs font-mono text-ink/70 outline-none focus:border-ink"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm({
+                                ...form,
+                                variants: form.variants.filter(
+                                  (_, i) => i !== index
+                                ),
+                              })
+                            }
+                            className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 transition-colors"
+                            title="Remove size"
+                          >
+                            <FiTrash2 className="text-sm" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {form.variants.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="py-6 text-center text-xs text-ink/40"
+                        >
+                          No sizes added. Use the Quick Add buttons above.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            {/* Card: Specifications & Origin */}
+            {/* Card 3: Specifications & Origin */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black uppercase tracking-wider text-ink">
                 3. Specifications & Care
@@ -2849,7 +3776,7 @@ function ProductEditor({ product, request, close, saved }: any) {
 
           {/* Right / Sidebar Column (5 cols) */}
           <div className="space-y-6 lg:col-span-5">
-            {/* Card: Imagery Studio (Requirement 7) */}
+            {/* Card 4: Imagery Studio (Item 7) */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -2858,15 +3785,15 @@ function ProductEditor({ product, request, close, saved }: any) {
                     Imagery Studio
                   </h3>
                   <p className="mt-1 text-xs text-ink/50">
-                    Upload multiple images. Index 1 is the main card cover.
+                    Upload multiple images. Image 1 is the main card cover.
                   </p>
                 </div>
-                <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs font-bold text-ink">
+                <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-xs font-bold text-ink">
                   {images.length} photos
                 </span>
               </div>
 
-              {/* Upload Zone */}
+              {/* Upload Dropzone */}
               <div className="mt-4">
                 <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-black/15 bg-[#fbfbf9] p-6 text-center cursor-pointer hover:border-black/30 hover:bg-[#f6f7f5] transition-all">
                   <FiUploadCloud className="text-3xl text-ink/40 mb-2" />
@@ -2914,7 +3841,7 @@ function ProductEditor({ product, request, close, saved }: any) {
                 </div>
               </div>
 
-              {/* Photos Gallery Grid & Card Cover Picker */}
+              {/* Photos Gallery Grid */}
               <div className="mt-5 space-y-3">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-ink/40">
                   Uploaded Photos:
@@ -2938,7 +3865,6 @@ function ProductEditor({ product, request, close, saved }: any) {
                           className="h-28 w-full object-cover"
                         />
 
-                        {/* Card Cover Badge */}
                         {isCover ? (
                           <span className="absolute left-1.5 top-1.5 rounded-full bg-emerald-600 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-md">
                             ★ Card Cover
@@ -2954,7 +3880,6 @@ function ProductEditor({ product, request, close, saved }: any) {
                           </button>
                         )}
 
-                        {/* Delete Button */}
                         <button
                           type="button"
                           onClick={() => removeImage(idx)}
@@ -2975,7 +3900,7 @@ function ProductEditor({ product, request, close, saved }: any) {
               </div>
             </div>
 
-            {/* Card: Pricing & Deals */}
+            {/* Card 5: Pricing & Deals */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-1.5">
                 <FiTag className="text-base text-rose-500" />
@@ -3061,7 +3986,7 @@ function ProductEditor({ product, request, close, saved }: any) {
               </div>
             </div>
 
-            {/* Card: Delivery & Spotlight Toggles (Requirements 9 & 10) */}
+            {/* Card 6: Delivery & Spotlight Toggles */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm space-y-3">
               <h3 className="text-sm font-black uppercase tracking-wider text-ink">
                 4. Highlights & Badges
@@ -3083,7 +4008,8 @@ function ProductEditor({ product, request, close, saved }: any) {
                     Free Delivery on this Product
                   </span>
                   <span className="text-[11px] text-emerald-800 block mt-0.5">
-                    Renders the FREE DELIVERY badge and zeros shipping at checkout.
+                    Renders the FREE DELIVERY badge and zeros shipping at
+                    checkout.
                   </span>
                 </div>
               </label>
@@ -3104,13 +4030,14 @@ function ProductEditor({ product, request, close, saved }: any) {
                     Feature on Home Spotlight
                   </span>
                   <span className="text-[11px] text-amber-800 block mt-0.5">
-                    Pins this drop into the Home Lookbook and Featured collection.
+                    Pins this drop into the Home Lookbook and Featured
+                    collection.
                   </span>
                 </div>
               </label>
             </div>
 
-            {/* Card: Drop Launch & Scheduled Publishing (Requirement 8) */}
+            {/* Card 7: Launch & Scheduled Publishing (Item 1) */}
             <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-1.5">
                 <FiClock className="text-base text-violet-600" />
@@ -3195,7 +4122,8 @@ function ProductEditor({ product, request, close, saved }: any) {
 
                   <p className="mt-2.5 text-[11px] text-violet-900/80">
                     Product will automatically go live on the storefront when
-                    this timestamp arrives.
+                    this timestamp arrives. When page is reloaded after this
+                    time, it will show as Published.
                   </p>
                 </div>
               )}

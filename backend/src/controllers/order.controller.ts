@@ -3,6 +3,7 @@ import { db } from '../config/db';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
 import { sendOrderConfirmationEmail, sendOrderNotificationEmail } from '../services/email.service';
+import { parseStoreSettings } from './settings.controller';
 
 function generateOrderNumber(): string {
   const prefix = 'OOFY';
@@ -100,16 +101,22 @@ export const createOrder = asyncHandler(
         );
       });
 
+      const parsedSettings = parseStoreSettings(settings);
+      const isDhaka = Boolean(district && district.toLowerCase().includes('dhaka'));
+      const baseDelivery = isDhaka
+        ? parsedSettings.deliveryChargeInsideDhaka
+        : parsedSettings.deliveryChargeOutsideDhaka;
+
       const isStorewideFreeDelivery =
-        Number(settings?.deliveryCharge ?? 60) === 0 ||
-        (settings?.freeShippingThreshold !== null &&
-          settings?.freeShippingThreshold !== undefined &&
-          (Number(settings.freeShippingThreshold) === 0 ||
-            subtotal >= Number(settings.freeShippingThreshold)));
+        baseDelivery === 0 ||
+        (parsedSettings.freeShippingThreshold !== null &&
+          parsedSettings.freeShippingThreshold !== undefined &&
+          (Number(parsedSettings.freeShippingThreshold) === 0 ||
+            subtotal >= Number(parsedSettings.freeShippingThreshold)));
 
       const isFreeShipping = hasFreeDeliveryProduct || isStorewideFreeDelivery;
 
-      const deliveryCharge = isFreeShipping ? 0 : Number(settings?.deliveryCharge ?? 60);
+      const deliveryCharge = isFreeShipping ? 0 : baseDelivery;
       const totalAmount = subtotal + Number(deliveryCharge);
       const orderNumber = generateOrderNumber();
 

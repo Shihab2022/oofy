@@ -81,6 +81,11 @@ export default function ProductDetailsPage() {
           onAdd={(variant: Variant, quantity: number) =>
             addToCart(product, variant, quantity)
           }
+          onBuyNow={(variant: Variant, quantity: number) => {
+            addToCart(product, variant, quantity);
+            setBagOpen(false);
+            setCheckoutOpen(true);
+          }}
         />
       </section>
       <RelatedProducts products={related} />

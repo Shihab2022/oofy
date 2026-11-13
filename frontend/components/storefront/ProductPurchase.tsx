@@ -5,9 +5,11 @@ import { Product, Variant, money, productPrice, isFreeDeliveryProduct } from "./
 export function ProductPurchase({
   product,
   onAdd,
+  onBuyNow,
 }: {
   product: Product;
   onAdd: (variant: Variant, quantity: number) => void;
+  onBuyNow?: (variant: Variant, quantity: number) => void;
 }) {
   const variants = product?.variants || [];
   const [variant, setVariant] = useState<Variant | undefined>(() =>
@@ -18,6 +20,7 @@ export function ProductPurchase({
   const isFree = isFreeDeliveryProduct(product);
   const cleanCare = product?.careInstructions
     ?.replace(/\[FREE_DELIVERY\]/g, "")
+    ?.replace(/\[SCHEDULED:[^\]]+\]/g, "")
     .trim();
 
   const details = [
@@ -50,9 +53,9 @@ export function ProductPurchase({
       <div className="size-grid">
         {variants.map((v) => (
           <button
-            key={v.id}
+            key={v.id || v.size}
             disabled={!v.stock}
-            className={variant?.id === v.id ? "selected" : ""}
+            className={variant?.id === v.id || variant?.size === v.size ? "selected" : ""}
             onClick={() => {
               setVariant(v);
               setQuantity(1);
@@ -63,27 +66,42 @@ export function ProductPurchase({
           </button>
         ))}
       </div>
-      <div className="purchase-actions">
-        <div className="quantity-control">
-          <button onClick={() => setQuantity(Math.max(1, quantity - 1))}>
-            −
-          </button>
-          <span>{quantity}</span>
+      <div className="purchase-actions flex flex-col gap-3">
+        <div className="flex items-center gap-3 w-full">
+          <div className="quantity-control">
+            <button onClick={() => setQuantity(Math.max(1, quantity - 1))}>
+              −
+            </button>
+            <span>{quantity}</span>
+            <button
+              onClick={() =>
+                setQuantity(Math.min(variant?.stock || 1, quantity + 1))
+              }
+            >
+              +
+            </button>
+          </div>
           <button
-            onClick={() =>
-              setQuantity(Math.min(variant?.stock || 1, quantity + 1))
-            }
+            type="button"
+            className="add-product-button flex-1"
+            disabled={!variant?.stock}
+            onClick={() => variant && onAdd(variant, quantity)}
           >
-            +
+            Add to bag
           </button>
         </div>
-        <button
-          className="add-product-button"
-          disabled={!variant?.stock}
-          onClick={() => variant && onAdd(variant, quantity)}
-        >
-          Add to bag
-        </button>
+
+        {onBuyNow && (
+          <button
+            type="button"
+            className="w-full rounded-xl bg-lime py-3.5 px-6 text-xs font-black uppercase tracking-widest text-ink hover:brightness-105 active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2"
+            disabled={!variant?.stock}
+            onClick={() => variant && onBuyNow(variant, quantity)}
+          >
+            <span>Instant Checkout / Buy Now</span>
+            <span className="text-sm">→</span>
+          </button>
+        )}
       </div>
       <div className="product-details">
         <details open>
@@ -98,18 +116,7 @@ export function ProductPurchase({
             )}
           </ul>
         </details>
-        <details>
-          <summary>
-            Shipping & returns <span>+</span>
-          </summary>
-          <p>
-            {isFree
-              ? "Free delivery included on this item across all districts of Bangladesh."
-              : "Ships within 5 business days. Cash on delivery is available across Bangladesh."}
-          </p>
-        </details>
       </div>
     </article>
   );
 }
-

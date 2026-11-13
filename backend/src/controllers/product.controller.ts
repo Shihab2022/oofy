@@ -37,8 +37,37 @@ export function formatProduct(p: any) {
   };
 }
 
+export async function syncScheduledProducts() {
+  try {
+    const scheduledCandidates = await db.product.findMany({
+      where: {
+        isPublished: false,
+        careInstructions: { contains: '[SCHEDULED:' },
+      },
+      select: { id: true, careInstructions: true },
+    });
+
+    const now = Date.now();
+    for (const cand of scheduledCandidates) {
+      const match = (cand.careInstructions || '').match(/\[SCHEDULED:([^\]]+)\]/);
+      if (match) {
+        const target = new Date(match[1]).getTime();
+        if (!isNaN(target) && now >= target) {
+          await db.product.update({
+            where: { id: cand.id },
+            data: { isPublished: true },
+          });
+        }
+      }
+    }
+  } catch (_err) {
+    // Non-blocking sync
+  }
+}
+
 export const getProducts = asyncHandler(
   async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    await syncScheduledProducts();
     const {
       category,
       search,
@@ -367,6 +396,7 @@ export const deleteProduct = asyncHandler(
 
 export const getAllProductsAdmin = asyncHandler(
   async (_req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    await syncScheduledProducts();
     const products = await db.product.findMany({
       orderBy: { createdAt: 'desc' },
       include: {

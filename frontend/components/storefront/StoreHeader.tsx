@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FiMenu, FiShoppingBag, FiX, FiArrowRight } from "react-icons/fi";
+
+const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api")
+  .trim()
+  .replace(/^["']|["']$/g, "");
 
 type Props = {
   cartCount?: number;
@@ -11,17 +15,70 @@ type Props = {
 
 export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [announcement, setAnnouncement] = useState<{
+    text: string;
+    visible: boolean;
+  }>({
+    text: "FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳2,000 ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE",
+    visible: true,
+  });
+
+  useEffect(() => {
+    fetch(`${API}/settings`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          const custom = res.data.customAnnouncement;
+          const threshold = res.data.freeShippingThreshold;
+
+          if (custom && custom.trim()) {
+            setAnnouncement({ text: custom.trim(), visible: true });
+          } else if (threshold !== null && threshold !== undefined && threshold !== "") {
+            const num = Number(threshold);
+            if (num === 0) {
+              setAnnouncement({
+                text: "100% FREE DELIVERY NATIONWIDE ON ALL ORDERS ✦ CASH ON DELIVERY AVAILABLE",
+                visible: true,
+              });
+            } else if (num > 0) {
+              setAnnouncement({
+                text: `FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳${num.toLocaleString(
+                  "en-BD"
+                )} ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE`,
+                visible: true,
+              });
+            } else {
+              setAnnouncement({
+                text: "CASH ON DELIVERY AVAILABLE NATIONWIDE",
+                visible: true,
+              });
+            }
+          } else {
+            // Admin has not set a free delivery range
+            setAnnouncement({
+              text: "CASH ON DELIVERY AVAILABLE NATIONWIDE",
+              visible: true,
+            });
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <>
-      {/* Top Announcement Bar */}
-      <aside className="announcement-bar" role="region" aria-label="Store Announcement">
-        <div className="announcement-content">
-          <span>FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳2,000</span>
-          <span className="announcement-dot">✦</span>
-          <span>CASH ON DELIVERY AVAILABLE NATIONWIDE</span>
-        </div>
-      </aside>
+      {/* Top Announcement Bar (Controlled by Admin Settings) */}
+      {announcement.visible && announcement.text && (
+        <aside
+          className="announcement-bar"
+          role="region"
+          aria-label="Store Announcement"
+        >
+          <div className="announcement-content">
+            <span>{announcement.text}</span>
+          </div>
+        </aside>
+      )}
 
       {/* Main Navigation Header */}
       <header className="store-header">
@@ -46,9 +103,6 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
                 </a>
                 <a href="#manifesto" className="nav-item">
                   Manifesto
-                </a>
-                <a href="/admin" className="nav-item nav-muted">
-                  Admin
                 </a>
               </nav>
             </>
@@ -77,10 +131,16 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
         </div>
       </header>
 
-      {/* Mobile Drawer Navigation */}
+      {/* Mobile Drawer Navigation (No admin tab) */}
       {mobileMenuOpen && (
-        <div className="mobile-menu-drawer" onClick={() => setMobileMenuOpen(false)}>
-          <div className="mobile-drawer-inner" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="mobile-menu-drawer"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="mobile-drawer-inner"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mobile-drawer-header">
               <span className="drawer-title">Navigation</span>
               <button
@@ -106,14 +166,6 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
                 className="mobile-link"
               >
                 <span>Manifesto & Atelier</span>
-                <FiArrowRight />
-              </a>
-              <a
-                href="/admin"
-                onClick={() => setMobileMenuOpen(false)}
-                className="mobile-link"
-              >
-                <span>Store Management</span>
                 <FiArrowRight />
               </a>
             </nav>

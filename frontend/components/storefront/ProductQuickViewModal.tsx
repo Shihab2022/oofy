@@ -9,12 +9,14 @@ type QuickViewModalProps = {
   product: Product;
   onClose: () => void;
   onAddToCart: (product: Product, variant: Variant, quantity: number) => void;
+  onBuyNow?: (product: Product, variant: Variant, quantity: number) => void;
 };
 
 export function ProductQuickViewModal({
   product,
   onClose,
   onAddToCart,
+  onBuyNow,
 }: QuickViewModalProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<Variant | undefined>(
@@ -197,6 +199,22 @@ export function ProductQuickViewModal({
                 )}
               </button>
             </div>
+
+            {onBuyNow && (
+              <button
+                type="button"
+                className="w-full mt-2.5 rounded-xl bg-lime py-3 px-4 text-xs font-black uppercase tracking-wider text-ink hover:brightness-105 active:scale-[0.99] transition-all shadow flex items-center justify-center gap-2"
+                disabled={isOutOfStock || !selectedVariant}
+                onClick={() => {
+                  if (!selectedVariant || isOutOfStock) return;
+                  onBuyNow(product, selectedVariant, quantity);
+                  onClose();
+                }}
+              >
+                <span>Instant Checkout / Buy Now</span>
+                <FiArrowRight />
+              </button>
+            )}
 
             {/* View Full Product Page link */}
             <div className="qv-footer-link">
