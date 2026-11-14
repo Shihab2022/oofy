@@ -8,7 +8,7 @@ export const orderCreateSchema = z.object({
     customerPhone: z
       .string()
       .min(10, 'Enter a valid phone number')
-      .transform((val) => val.replace(/[\s\-]/g, ''))
+      .transform((val) => val.replace(/[\s\-\(\)\.]/g, ''))
       .refine((val) => phoneRegex.test(val), {
         message: 'Enter a valid Bangladesh phone number (e.g. 01XXXXXXXXX)',
       }),
@@ -18,11 +18,13 @@ export const orderCreateSchema = z.object({
       .optional()
       .or(z.literal(''))
       .nullable(),
-    address: z.string().min(5, 'Full delivery address is required'),
+    address: z.string().min(3, 'Full delivery address is required'),
     district: z.string().min(1, 'District is required'),
     area: z.string().min(1, 'Area / Upazila is required'),
     orderNotes: z.string().optional().nullable(),
-    paymentMethod: z.enum(['COD', 'BKASH', 'NAGAD']).default('COD'),
+    paymentMethod: z
+      .preprocess((val) => (typeof val === 'string' ? val.toUpperCase() : val), z.enum(['COD', 'BKASH', 'NAGAD']))
+      .default('COD'),
     paymentNumber: z.string().optional().nullable(),
     transactionId: z.string().optional().nullable(),
     items: z
@@ -30,13 +32,13 @@ export const orderCreateSchema = z.object({
         z.object({
           productId: z.string().min(1, 'Product is required'),
           variantId: z.string().optional().nullable(),
-          quantity: z.number().int().positive('Quantity must be at least 1'),
-          size: z.string().min(1, 'Size is required'),
+          quantity: z.coerce.number().int().positive('Quantity must be at least 1'),
+          size: z.string().optional().nullable().default('M'),
           color: z.string().optional().nullable(),
         })
       )
       .min(1, 'At least one item is required'),
-  }),
+  }).passthrough(),
 });
 
 export const orderStatusSchema = z.object({

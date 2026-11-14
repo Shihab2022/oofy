@@ -123,7 +123,8 @@ export default function AllProductsPage() {
 
   // Filter & sort logic
   const filteredProducts = useMemo(() => {
-    let list = [...products];
+    // Requirement 9: Exclude unpublished (hidden) products
+    let list = products.filter((p) => p.isPublished !== false);
 
     // Category filter
     if (selectedCategory !== "all") {

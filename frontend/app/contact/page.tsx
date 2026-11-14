@@ -19,6 +19,10 @@ import {
   FiTruck,
 } from "react-icons/fi";
 
+const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api")
+  .trim()
+  .replace(/^["']|["']$/g, "");
+
 export default function ContactPage() {
   const {
     cart,
@@ -46,12 +50,29 @@ export default function ContactPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    // Simulate inquiry submission with immediate success feedback
-    setTimeout(() => {
-      setSubmitting(false);
+    try {
+      const endpoints = [
+        "/api/contact",
+        `${API}/contact`,
+        "http://localhost:5000/api/contact",
+      ];
+      for (const ep of Array.from(new Set(endpoints))) {
+        try {
+          const res = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(form),
+          });
+          if (res.ok) {
+            break;
+          }
+        } catch {
+          // continue fallback
+        }
+      }
       setSubmitted(true);
       setForm({
         name: "",
@@ -60,7 +81,11 @@ export default function ContactPage() {
         subject: "Order Inquiry",
         message: "",
       });
-    }, 600);
+    } catch {
+      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

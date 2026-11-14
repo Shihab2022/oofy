@@ -34,6 +34,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/images/logo.jpeg", type: "image/jpeg" },
     ],
     shortcut: "/icon.svg",
     apple: "/icon.svg",
@@ -48,10 +49,11 @@ export const metadata: Metadata = {
       "High-grade streetwear essentials made for daily wear. Heavyweight tees, oversized hoodies, relaxed tailoring. Cash on delivery nationwide in Bangladesh.",
     images: [
       {
-        url: "/icon.svg",
-        width: 512,
-        height: 512,
-        alt: "OOFY — Wear Your Confidence",
+        url: "/images/logo.jpeg",
+        width: 1200,
+        height: 630,
+        type: "image/jpeg",
+        alt: "OOFY® — Wear Your Confidence",
       },
     ],
   },
@@ -60,7 +62,7 @@ export const metadata: Metadata = {
     title: "OOFY® — Wear Your Confidence",
     description:
       "Contemporary streetwear & luxury essentials from Dhaka, Bangladesh. Fast nationwide cash on delivery.",
-    images: ["/icon.svg"],
+    images: ["/images/logo.jpeg"],
     creator: "@oofybrand",
   },
   robots: {

@@ -2388,20 +2388,47 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .store-header {
-    height: 62px;
-    padding: 0 16px;
+    height: 66px;
+    padding: 0 20px;
   }
   .desktop-nav {
-    display: none;
+    display: none !important;
   }
   .mobile-menu-btn {
-    display: block;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
   }
   .brand-wordmark {
     font-size: 26px;
   }
+}
+
+@media (max-width: 640px) {
+  .store-header {
+    height: 58px;
+    padding: 0 12px;
+  }
+  .brand-wordmark {
+    font-size: 21px;
+    letter-spacing: -0.09em;
+  }
+  .bag-text {
+    display: none !important;
+  }
+  .bag-trigger-btn {
+    padding: 6px 10px;
+    gap: 4px;
+  }
+  .mobile-menu-btn {
+    font-size: 20px;
+    padding: 4px;
+  }
+}
+
+@media (max-width: 768px) {
   .hero-copy-col {
     padding: 40px 20px;
   }

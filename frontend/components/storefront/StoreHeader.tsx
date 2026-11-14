@@ -19,60 +19,73 @@ export function StoreHeader({ cartCount = 0, onCart, back = false }: Props) {
     text: string;
     visible: boolean;
   }>({
-    text: "FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳2,000 ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE",
-    visible: true,
+    text: "",
+    visible: false,
   });
 
   useEffect(() => {
-    fetch(`${API}/settings`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && res.data) {
-          const isAnnouncementEnabled = res.data.showAnnouncement !== false;
-          if (!isAnnouncementEnabled) {
-            setAnnouncement({ text: "", visible: false });
-            return;
-          }
+    const endpoints = [
+      "/api/settings",
+      `${API}/settings`,
+      "http://localhost:5000/api/settings",
+      "http://127.0.0.1:5000/api/settings",
+    ];
 
-          const custom = res.data.customAnnouncement;
-          const threshold = res.data.freeShippingThreshold;
+    (async () => {
+      for (const ep of Array.from(new Set(endpoints))) {
+        try {
+          const r = await fetch(ep, { cache: "no-store" });
+          if (!r.ok) continue;
+          const res = await r.json();
+          if (res.success && res.data) {
+            const isAnnouncementEnabled = res.data.showAnnouncement !== false;
+            if (!isAnnouncementEnabled) {
+              setAnnouncement({ text: "", visible: false });
+              return;
+            }
 
-          if (custom && custom.trim()) {
-            setAnnouncement({ text: custom.trim(), visible: true });
-          } else if (
-            threshold !== null &&
-            threshold !== undefined &&
-            threshold !== ""
-          ) {
-            const num = Number(threshold);
-            if (num === 0) {
-              setAnnouncement({
-                text: "100% FREE DELIVERY NATIONWIDE ON ALL ORDERS ✦ CASH ON DELIVERY AVAILABLE",
-                visible: true,
-              });
-            } else if (num > 0) {
-              setAnnouncement({
-                text: `FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳${num.toLocaleString(
-                  "en-BD"
-                )} ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE`,
-                visible: true,
-              });
+            const custom = res.data.customAnnouncement;
+            const threshold = res.data.freeShippingThreshold;
+
+            if (custom && custom.trim()) {
+              setAnnouncement({ text: custom.trim(), visible: true });
+            } else if (
+              threshold !== null &&
+              threshold !== undefined &&
+              threshold !== ""
+            ) {
+              const num = Number(threshold);
+              if (num === 0) {
+                setAnnouncement({
+                  text: "100% FREE DELIVERY NATIONWIDE ON ALL ORDERS ✦ CASH ON DELIVERY AVAILABLE",
+                  visible: true,
+                });
+              } else if (num > 0) {
+                setAnnouncement({
+                  text: `FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳${num.toLocaleString(
+                    "en-BD"
+                  )} ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE`,
+                  visible: true,
+                });
+              } else {
+                setAnnouncement({
+                  text: "CASH ON DELIVERY AVAILABLE NATIONWIDE",
+                  visible: true,
+                });
+              }
             } else {
               setAnnouncement({
                 text: "CASH ON DELIVERY AVAILABLE NATIONWIDE",
                 visible: true,
               });
             }
-          } else {
-            // Admin has not set a free delivery range
-            setAnnouncement({
-              text: "CASH ON DELIVERY AVAILABLE NATIONWIDE",
-              visible: true,
-            });
+            break;
           }
+        } catch {
+          // try next fallback
         }
-      })
-      .catch(() => {});
+      }
+    })();
   }, []);
 
   return (

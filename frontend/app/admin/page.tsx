@@ -220,6 +220,13 @@ export default function AdminPage() {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", slug);
       window.history.replaceState({}, "", url.toString());
+
+      setTimeout(() => {
+        const btn = document.getElementById(`admin-mob-tab-${slug}`);
+        if (btn) {
+          btn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+        }
+      }, 50);
     }
   };
 
@@ -523,7 +530,7 @@ export default function AdminPage() {
 
       {/* Main Workspace */}
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-10 flex h-20 items-center justify-between border-b border-black/5 bg-[#f6f7f5]/95 px-5 backdrop-blur md:px-9">
+        <header className="sticky top-0 z-30 flex min-h-16 h-auto py-3 items-center justify-between border-b border-black/5 bg-[#f6f7f5]/95 px-4 backdrop-blur md:px-9 flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -537,7 +544,7 @@ export default function AdminPage() {
               <p className="text-[10px] font-bold uppercase tracking-[.2em] text-ink/45">
                 Commerce manager
               </p>
-              <h1 className="mt-0.5 text-lg sm:text-xl font-black tracking-[-.05em]">
+              <h1 className="mt-0.5 text-base sm:text-xl font-black tracking-[-.05em]">
                 {pageTitle}
               </h1>
             </div>
@@ -555,22 +562,27 @@ export default function AdminPage() {
           </div>
         </header>
 
-        {/* Horizontal Mobile / Tablet Tab Switcher (1-tap switching) */}
-        <div className="lg:hidden flex items-center gap-2 overflow-x-auto bg-white border-b border-black/8 px-4 py-2.5 scrollbar-thin">
-          {nav.map(([label, Icon]: any) => (
-            <button
-              key={label}
-              onClick={() => changeTab(label)}
-              className={`flex-shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                active === label
-                  ? "bg-[#121512] text-white shadow-sm"
-                  : "bg-black/5 text-ink/70 hover:bg-black/10"
-              }`}
-            >
-              <Icon className="text-xs" />
-              {label}
-            </button>
-          ))}
+        {/* Horizontal Mobile / Tablet Tab Switcher (Fully responsive 1-tap switching) */}
+        <div className="lg:hidden sticky top-16 z-20 flex items-center gap-2 overflow-x-auto bg-white/95 backdrop-blur border-b border-black/8 px-4 py-2.5 no-scrollbar scroll-smooth shadow-[0_2px_10px_rgba(0,0,0,0.03)]">
+          {nav.map(([label, Icon]: any) => {
+            const slug = label.toLowerCase().replace(/\s+/g, "-");
+            const isActive = active === label;
+            return (
+              <button
+                key={label}
+                id={`admin-mob-tab-${slug}`}
+                onClick={() => changeTab(label)}
+                className={`flex-shrink-0 flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
+                  isActive
+                    ? "bg-[#121512] text-white shadow-sm ring-2 ring-black/10"
+                    : "bg-black/5 text-ink/75 hover:bg-black/10"
+                }`}
+              >
+                <Icon className={`text-xs ${isActive ? "text-lime" : "text-ink/60"}`} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </div>
 
         <section className="p-5 md:p-9">
@@ -1151,6 +1163,37 @@ function Products({
     }
   };
 
+  const togglePublish = async (p: Product) => {
+    try {
+      const next = !p.isPublished;
+      let ok = false;
+      try {
+        const res = await request("/admin/products/toggle-status", {
+          method: "POST",
+          body: JSON.stringify({ id: p.id, isPublished: next }),
+        });
+        if (res?.success) ok = true;
+      } catch {
+        // fallback to PUT
+      }
+      if (!ok) {
+        await request(`/admin/products/${p.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ isPublished: next }),
+        });
+      }
+      showToast(
+        next
+          ? `"${p.name}" is now live and showing on the website.`
+          : `"${p.name}" is now turned off (hidden from website).`,
+        "success"
+      );
+      if (refresh) await refresh();
+    } catch (e: any) {
+      showToast(e.message || "Failed to update product showing status", "error");
+    }
+  };
+
   return (
     <section className="rounded-2xl border border-black/8 bg-white shadow-sm">
       <div className="flex flex-col justify-between gap-4 border-b border-black/8 p-5 md:flex-row md:items-center">
@@ -1190,7 +1233,7 @@ function Products({
               <th>Delivery</th>
               <th>Spotlight</th>
               <th>Stock</th>
-              <th>Publish Status</th>
+              <th>Product Showing Status</th>
               <th></th>
             </tr>
           </thead>
@@ -1304,34 +1347,40 @@ function Products({
                     {p.variants.reduce((n, v) => n + Number(v.stock), 0)}
                   </td>
                   <td>
-                    {isScheduled ? (
-                      <div className="flex flex-col">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-black text-violet-800 uppercase tracking-wide">
-                          <FiClock className="text-xs" /> Scheduled Drop
-                        </span>
-                        <span className="text-[10px] text-violet-900/70 mt-0.5 font-mono">
-                          {new Date(p.scheduledAt!).toLocaleDateString(
-                            "en-US",
-                            {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )}
-                        </span>
-                      </div>
-                    ) : (
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
+                    <div className="flex flex-col gap-1 items-start">
+                      <button
+                        type="button"
+                        onClick={() => togglePublish(p)}
+                        title={
                           p.isPublished
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-stone-100 text-stone-600"
+                            ? "Currently SHOWN on website. Click to turn OFF."
+                            : "Currently HIDDEN from website. Click to turn ON."
+                        }
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer border ${
+                          p.isPublished
+                            ? "bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border-emerald-300"
+                            : "bg-stone-100 text-stone-600 hover:bg-stone-200 border-stone-300"
                         }`}
                       >
-                        {p.isPublished ? "Live" : "Draft"}
-                      </span>
-                    )}
+                        <span
+                          className={`relative inline-block h-3.5 w-6 rounded-full transition-colors ${
+                            p.isPublished ? "bg-emerald-600" : "bg-stone-400"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-[1.5px] left-[1.5px] h-2.5 w-2.5 rounded-full bg-white transition-transform ${
+                              p.isPublished ? "translate-x-2.5" : "translate-x-0"
+                            }`}
+                          />
+                        </span>
+                        <span>{p.isPublished ? "ON (Showing)" : "OFF (Hidden)"}</span>
+                      </button>
+                      {isScheduled && (
+                        <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-800">
+                          <FiClock /> Scheduled Drop
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div className="flex gap-2">
@@ -2935,6 +2984,37 @@ function Categories({
   );
 }
 
+const BANGLADESH_DISTRICTS = [
+  "Chattogram",
+  "Sylhet",
+  "Gazipur",
+  "Narayanganj",
+  "Rajshahi",
+  "Khulna",
+  "Barishal",
+  "Rangpur",
+  "Mymensingh",
+  "Cumilla",
+  "Bogura",
+  "Cox's Bazar",
+  "Brahmanbaria",
+  "Dinajpur",
+  "Jessore",
+  "Kushtia",
+  "Tangail",
+  "Faridpur",
+  "Pabna",
+  "Noakhali",
+  "Feni",
+  "Jamalpur",
+  "Sirajganj",
+  "Natore",
+  "Chandpur",
+  "Manikganj",
+  "Munshiganj",
+  "Narsingdi",
+];
+
 /* -------------------------------------------------------------------------- */
 /*                   STORE SETTINGS (Item 3 & Item 5)                         */
 /* -------------------------------------------------------------------------- */
@@ -2951,7 +3031,12 @@ function Settings({
     contactEmail: "oofybrand@gmail.com",
     deliveryChargeInsideDhaka: "60",
     deliveryChargeOutsideDhaka: "100",
+    cityDeliveryRates: {} as Record<string, number>,
+    newCityName: "",
+    newCityRate: "100",
     freeShippingThreshold: "2000",
+    enableThreshold: true,
+    showAnnouncement: true,
     customAnnouncement: "",
     codEnabled: true,
   });
@@ -2961,7 +3046,15 @@ function Settings({
     request("/admin/settings")
       .then((r: any) => {
         if (r.data) {
-          setForm({
+          const rawThreshold = r.data.freeShippingThreshold;
+          const hasThreshold =
+            rawThreshold !== null &&
+            rawThreshold !== undefined &&
+            rawThreshold !== "" &&
+            Number(rawThreshold) > 0;
+
+          setForm((prev) => ({
+            ...prev,
             storeName: r.data.storeName || "OOFY",
             storeTagline: r.data.storeTagline || "Wear Your Confidence",
             contactEmail: r.data.contactEmail || "oofybrand@gmail.com",
@@ -2971,26 +3064,61 @@ function Settings({
             deliveryChargeOutsideDhaka: String(
               r.data.deliveryChargeOutsideDhaka ?? 100
             ),
-            freeShippingThreshold:
-              r.data.freeShippingThreshold !== null &&
-              r.data.freeShippingThreshold !== undefined
-                ? String(r.data.freeShippingThreshold)
-                : "2000",
+            cityDeliveryRates: r.data.cityDeliveryRates || {},
+            freeShippingThreshold: hasThreshold ? String(rawThreshold) : "2000",
+            enableThreshold: hasThreshold,
+            showAnnouncement: r.data.showAnnouncement !== false,
             customAnnouncement: r.data.customAnnouncement || "",
             codEnabled: r.data.codEnabled ?? true,
-          });
+          }));
         }
       })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const addCityRate = () => {
+    const city = form.newCityName.trim();
+    const rate = Number(form.newCityRate);
+    if (!city) {
+      showToast("Please enter or select a city/district name.", "error");
+      return;
+    }
+    if (isNaN(rate) || rate < 0) {
+      showToast("Please enter a valid delivery charge (minimum 0).", "error");
+      return;
+    }
+    setForm({
+      ...form,
+      cityDeliveryRates: {
+        ...form.cityDeliveryRates,
+        [city]: rate,
+      },
+      newCityName: "",
+      newCityRate: "100",
+    });
+    showToast(`Added delivery rate for "${city}": ৳${rate}`, "success");
+  };
+
+  const removeCityRate = (city: string) => {
+    const copy = { ...form.cityDeliveryRates };
+    delete copy[city];
+    setForm({ ...form, cityDeliveryRates: copy });
+    showToast(`Removed custom delivery rate for "${city}".`, "info");
+  };
+
   const save = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        freeShippingThreshold: form.enableThreshold
+          ? form.freeShippingThreshold
+          : "",
+      };
       await request("/admin/settings", {
         method: "PUT",
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       showToast("Store settings saved successfully.", "success");
     } catch (err: any) {
@@ -3003,20 +3131,20 @@ function Settings({
   return (
     <form onSubmit={save} className="max-w-4xl space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black tracking-[-.04em] text-ink">
             Store Settings & Rules
           </h2>
           <p className="mt-1 text-xs text-ink/50">
-            Configure Dhaka vs Outside Dhaka shipping rates, minimum free delivery
-            threshold, and announcement marquee.
+            Configure Dhaka vs Outside Dhaka shipping rates, city-specific charges,
+            minimum free delivery threshold, and announcement marquee.
           </p>
         </div>
         <button
           type="submit"
           disabled={saving}
-          className="rounded-xl bg-ink px-6 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black/80 disabled:opacity-50 transition-all shadow-sm"
+          className="rounded-xl bg-ink px-6 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black/80 disabled:opacity-50 transition-all shadow-sm cursor-pointer"
         >
           {saving ? "Saving…" : "Save Changes"}
         </button>
@@ -3063,23 +3191,24 @@ function Settings({
                 setForm({ ...form, contactEmail: e.target.value })
               }
               className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-normal outline-none focus:border-ink"
-              placeholder="support@oofy.com"
+              placeholder="support@oofy.store"
             />
           </label>
         </div>
       </div>
 
-      {/* Card 2: Location-Based Delivery Charges (Item 3) */}
+      {/* Card 2: Location-Based Delivery Charges & City Rates (Item 4) */}
       <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
           <FiTruck className="text-base text-emerald-600" />
           Location Delivery Charges & Free Shipping Rules
         </h3>
         <p className="mt-1 text-xs text-ink/50">
-          Manage separate delivery fees for Dhaka and Outside Dhaka districts.
+          Set base delivery fees for Dhaka, default outside Dhaka (default ৳100), and custom
+          delivery rates for specific cities or districts.
         </p>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="text-xs font-bold uppercase tracking-wider">
             Inside Dhaka Delivery (৳)
             <input
@@ -3098,7 +3227,7 @@ function Settings({
           </label>
 
           <label className="text-xs font-bold uppercase tracking-wider">
-            Outside Dhaka Delivery (৳)
+            Default Outside Dhaka (৳)
             <input
               type="number"
               min="0"
@@ -3110,26 +3239,192 @@ function Settings({
               placeholder="100"
             />
             <span className="mt-1.5 block text-[11px] text-ink/45 font-normal">
-              Applied for all other 63 districts in Bangladesh.
+              Default outside Dhaka rate (default value: ৳100).
             </span>
           </label>
+        </div>
 
-          <label className="text-xs font-bold uppercase tracking-wider">
-            Free Shipping Threshold (৳)
-            <input
-              type="number"
-              min="0"
-              value={form.freeShippingThreshold}
-              onChange={(e) =>
-                setForm({ ...form, freeShippingThreshold: e.target.value })
-              }
-              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-ink"
-              placeholder="2000"
-            />
-            <span className="mt-1.5 block text-[11px] text-ink/45 font-normal">
-              Orders at or above this subtotal ship 100% free.
+        {/* Free Shipping Over Threshold Toggle */}
+        <div className="mt-5 rounded-xl border border-black/8 bg-[#fbfbf9] p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider text-ink block">
+                Free Delivery on Orders Over Threshold
+              </span>
+              <p className="text-[11px] text-ink/50">
+                Automatically waive shipping fees when customer subtotal reaches a specified amount.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <span className="text-xs font-bold uppercase tracking-wider text-ink">
+                {form.enableThreshold ? "Active" : "Disabled"}
+              </span>
+              <input
+                type="checkbox"
+                checked={form.enableThreshold}
+                onChange={(e) =>
+                  setForm({ ...form, enableThreshold: e.target.checked })
+                }
+                className="h-5 w-5 rounded accent-emerald-600 cursor-pointer"
+              />
+            </label>
+          </div>
+
+          {form.enableThreshold ? (
+            <div className="pt-2 border-t border-black/5">
+              <label className="text-xs font-bold uppercase tracking-wider block">
+                Minimum Subtotal for Free Delivery (৳)
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="text-sm font-bold text-ink/60">৳</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.freeShippingThreshold}
+                    onChange={(e) =>
+                      setForm({ ...form, freeShippingThreshold: e.target.value })
+                    }
+                    className="w-36 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-bold text-ink outline-none focus:border-ink"
+                    placeholder="2000"
+                  />
+                  <div className="flex gap-1.5">
+                    {["1500", "2000", "2500", "3000"].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() =>
+                          setForm({ ...form, freeShippingThreshold: preset })
+                        }
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                          form.freeShippingThreshold === preset
+                            ? "bg-ink text-white"
+                            : "bg-black/5 text-ink/60 hover:bg-black/10"
+                        }`}
+                      >
+                        ৳{preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </label>
+            </div>
+          ) : (
+            <div className="text-[11px] text-ink/55 pt-1 border-t border-black/5">
+              Threshold free delivery is <strong>deactivated</strong>. All orders will incur the standard location delivery charge (৳{form.deliveryChargeInsideDhaka} in Dhaka, ৳{form.deliveryChargeOutsideDhaka} / custom rate outside Dhaka).
+            </div>
+          )}
+        </div>
+
+        {/* City-Specific Delivery Rates Manager (Item 4) */}
+        <div className="mt-6 rounded-xl border border-black/8 bg-[#fbfbf9] p-4 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider text-ink block">
+                Custom Delivery Charges by City / District (Item 4)
+              </span>
+              <p className="text-[11px] text-ink/50">
+                Override the default outside Dhaka rate for specific cities (default value: ৳100).
+              </p>
+            </div>
+            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 rounded-full px-2.5 py-0.5">
+              {Object.keys(form.cityDeliveryRates).length} Custom City Rule(s)
             </span>
-          </label>
+          </div>
+
+          {/* Existing City Rates Chips */}
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(form.cityDeliveryRates).map(([city, rate]) => (
+              <div
+                key={city}
+                className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-1.5 text-xs font-bold shadow-sm"
+              >
+                <span>{city}:</span>
+                <span className="text-emerald-700">৳{rate}</span>
+                <button
+                  type="button"
+                  onClick={() => removeCityRate(city)}
+                  className="text-black/40 hover:text-rose-600 transition-colors ml-1 p-0.5"
+                  title={`Remove ${city}`}
+                >
+                  <FiX />
+                </button>
+              </div>
+            ))}
+            {Object.keys(form.cityDeliveryRates).length === 0 && (
+              <span className="text-xs text-ink/40 italic">
+                No custom city rules configured yet. All outside Dhaka orders use default ৳{form.deliveryChargeOutsideDhaka}.
+              </span>
+            )}
+          </div>
+
+          {/* Add City Rate Input Row with Quick Presets */}
+          <div className="space-y-3 pt-3 border-t border-black/5">
+            <div className="flex flex-col sm:flex-row gap-2">
+              {/* Select or type city name */}
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  list="districts-list"
+                  placeholder="Select or type city name (e.g. Chattogram, Sylhet, Gazipur)"
+                  value={form.newCityName}
+                  onChange={(e) => setForm({ ...form, newCityName: e.target.value })}
+                  className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs outline-none focus:border-ink"
+                />
+                <datalist id="districts-list">
+                  {BANGLADESH_DISTRICTS.map((d) => (
+                    <option key={d} value={d} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-ink/60">৳</span>
+                <input
+                  type="number"
+                  placeholder="Rate"
+                  value={form.newCityRate}
+                  onChange={(e) => setForm({ ...form, newCityRate: e.target.value })}
+                  className="w-24 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs outline-none focus:border-ink font-bold"
+                />
+                <button
+                  type="button"
+                  onClick={addCityRate}
+                  className="rounded-xl bg-ink px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-black/80 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <FiPlus /> Add City Rate
+                </button>
+              </div>
+            </div>
+
+            {/* Quick preset chips for rates & quick district picks */}
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink/50">
+              <span className="font-semibold">Quick Rates:</span>
+              {["80", "100", "120", "150"].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setForm({ ...form, newCityRate: r })}
+                  className={`rounded-md px-2 py-0.5 font-bold transition-all ${
+                    form.newCityRate === r
+                      ? "bg-emerald-600 text-white"
+                      : "bg-black/5 text-ink/70 hover:bg-black/10"
+                  }`}
+                >
+                  ৳{r}
+                </button>
+              ))}
+              <span className="ml-2 font-semibold">Popular Cities:</span>
+              {["Chattogram", "Sylhet", "Gazipur", "Narayanganj", "Rajshahi", "Khulna"].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setForm({ ...form, newCityName: c })}
+                  className="rounded-md bg-black/5 px-2 py-0.5 text-ink/70 hover:bg-black/10 transition-all"
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Storewide Free Delivery Toggle */}
@@ -3172,47 +3467,76 @@ function Settings({
         </div>
       </div>
 
-      {/* Card 3: Top Announcement Bar Marquee (Item 5) */}
+      {/* Card 3: Top Announcement Bar & Toggle (Item 5) */}
       <div className="rounded-2xl border border-black/8 bg-white p-6 shadow-sm">
-        <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
-          <FiTag className="text-base text-ink/60" />
-          Storefront Top Announcement Bar
-        </h3>
-        <p className="mt-1 text-xs text-ink/50">
-          The ticker shown at the top of the homepage. Leave blank to automatically
-          generate based on your Free Shipping Threshold.
-        </p>
+        <div className="flex items-center justify-between pb-3 border-b border-black/5">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
+              <FiTag className="text-base text-ink/60" />
+              Storefront Top Announcement Bar (Item 5)
+            </h3>
+            <p className="mt-1 text-xs text-ink/50">
+              Remove or enable the top marquee ticker (FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳2,000...).
+            </p>
+          </div>
 
-        <div className="mt-4 space-y-3">
-          <label className="block text-xs font-bold uppercase tracking-wider">
-            Custom Marquee Announcement Text
+          {/* Announcement Visibility Switch (Item 5) */}
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <span className="text-xs font-bold uppercase tracking-wider text-ink">
+              {form.showAnnouncement ? "Banner Visible (ON)" : "Banner Hidden (OFF)"}
+            </span>
             <input
-              value={form.customAnnouncement}
+              type="checkbox"
+              checked={form.showAnnouncement}
               onChange={(e) =>
-                setForm({ ...form, customAnnouncement: e.target.value })
+                setForm({ ...form, showAnnouncement: e.target.checked })
               }
-              className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-normal outline-none focus:border-ink"
-              placeholder="e.g. SPECIAL WINTER DROP ✦ 15% OFF ON SELECTED HOODIES"
+              className="h-5 w-5 rounded accent-ink cursor-pointer"
             />
           </label>
-
-          {/* Live Preview Box */}
-          <div className="rounded-xl border border-black/5 bg-[#121512] p-3 text-white text-center text-xs font-bold tracking-wider uppercase">
-            <span className="text-white/40 mr-2 text-[10px]">Preview:</span>
-            <span>
-              {form.customAnnouncement.trim()
-                ? form.customAnnouncement.trim()
-                : form.freeShippingThreshold &&
-                  Number(form.freeShippingThreshold) > 0
-                ? `FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳${Number(
-                    form.freeShippingThreshold
-                  ).toLocaleString("en-BD")} ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE`
-                : form.freeShippingThreshold === "0"
-                ? "100% FREE DELIVERY NATIONWIDE ON ALL ORDERS ✦ CASH ON DELIVERY AVAILABLE"
-                : "CASH ON DELIVERY AVAILABLE NATIONWIDE"}
-            </span>
-          </div>
         </div>
+
+        {form.showAnnouncement ? (
+          <div className="mt-4 space-y-3">
+            <label className="block text-xs font-bold uppercase tracking-wider">
+              Custom Marquee Announcement Text
+              <input
+                value={form.customAnnouncement}
+                onChange={(e) =>
+                  setForm({ ...form, customAnnouncement: e.target.value })
+                }
+                className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm font-normal outline-none focus:border-ink"
+                placeholder="Leave blank for default: FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳2,000..."
+              />
+            </label>
+
+            {/* Live Preview Box */}
+            <div className="rounded-xl border border-black/5 bg-[#121512] p-3 text-white text-center text-xs font-bold tracking-wider uppercase">
+              <span className="text-white/40 mr-2 text-[10px]">Preview:</span>
+              <span>
+                {form.customAnnouncement.trim()
+                  ? form.customAnnouncement.trim()
+                  : form.enableThreshold &&
+                    form.freeShippingThreshold &&
+                    Number(form.freeShippingThreshold) > 0
+                  ? `FREE DELIVERY IN BANGLADESH ON ORDERS OVER ৳${Number(
+                      form.freeShippingThreshold
+                    ).toLocaleString("en-BD")} ✦ CASH ON DELIVERY AVAILABLE NATIONWIDE`
+                  : form.freeShippingThreshold === "0"
+                  ? "100% FREE DELIVERY NATIONWIDE ON ALL ORDERS ✦ CASH ON DELIVERY AVAILABLE"
+                  : "CASH ON DELIVERY AVAILABLE NATIONWIDE"}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-950 space-y-1">
+            <strong>✦ Announcement Bar is turned OFF (Removed from Storefront)</strong>
+            <p>
+              The announcement ticker text is completely removed from the homepage and storefront header.
+              Free shipping over ৳2,000 will not be applied automatically, and standard delivery charges (৳{form.deliveryChargeInsideDhaka} in Dhaka, ৳{form.deliveryChargeOutsideDhaka} / custom outside Dhaka) will be used.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Card 4: Payment Methods */}
@@ -4136,8 +4460,32 @@ function ProductEditor({ product, request, close, showToast, saved }: any) {
                 Launch & Publishing Schedule
               </h3>
               <p className="mt-1 text-xs text-ink/50">
-                Publish immediately or schedule an automated drop time.
+                Control storefront visibility or schedule an automated drop time.
               </p>
+
+              {/* Product Showing Status Toggle (Requirement 9) */}
+              <div className="mt-4 flex items-center justify-between p-3.5 rounded-xl border border-black/10 bg-[#fbfbf9]">
+                <div>
+                  <span className="text-xs font-black uppercase text-ink flex items-center gap-1.5">
+                    <FiBox className="text-sm text-ink/60" />
+                    Product Showing Status
+                  </span>
+                  <span className="text-[11px] text-ink/55 block mt-0.5">
+                    Turn OFF to immediately hide this product from customers on the website.
+                  </span>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <span className={`text-xs font-bold uppercase tracking-wider ${form.published ? 'text-emerald-700' : 'text-stone-500'}`}>
+                    {form.published ? "Showing (ON)" : "Hidden (OFF)"}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={form.published}
+                    onChange={(e) => setForm({ ...form, published: e.target.checked })}
+                    className="h-5 w-5 rounded accent-emerald-600 cursor-pointer"
+                  />
+                </label>
+              </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button

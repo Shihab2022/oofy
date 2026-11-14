@@ -325,7 +325,11 @@ export const updateProduct = asyncHandler(
     }
 
     let finalPublished = isPublished;
-    if (scheduledAt) {
+    if (isPublished === false) {
+      currentCare = currentCare.replace(/\[SCHEDULED:[^\]]+\]/g, '').trim();
+      finalCare = currentCare;
+      finalPublished = false;
+    } else if (scheduledAt) {
       currentCare = currentCare.replace(/\[SCHEDULED:[^\]]+\]/g, '').trim();
       currentCare = `${currentCare} [SCHEDULED:${scheduledAt}]`.trim();
       finalCare = currentCare;
@@ -531,6 +535,26 @@ export const toggleFeaturedProduct = asyncHandler(
     res.json({
       success: true,
       message: product.isFeatured ? 'Product pinned to Home spotlight.' : 'Product unpinned from Home spotlight.',
+      data: formatProduct(product),
+    });
+  }
+);
+
+export const toggleProductStatus = asyncHandler(
+  async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
+    const { id, isPublished } = req.body;
+    if (!id) throw new ApiError(400, 'Product ID is required');
+
+    const product = await db.product.update({
+      where: { id },
+      data: { isPublished: Boolean(isPublished) },
+    });
+
+    res.json({
+      success: true,
+      message: product.isPublished
+        ? 'Product is now live and showing on the website.'
+        : 'Product is now hidden (turned off) from the website.',
       data: formatProduct(product),
     });
   }

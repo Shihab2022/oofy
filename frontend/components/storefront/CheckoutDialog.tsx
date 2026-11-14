@@ -152,35 +152,72 @@ export function CheckoutDialog({
   });
 
   useEffect(() => {
-    fetch(`${API}/settings`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && res.data) {
-          setDeliveryRates({
-            insideDhaka: Number(
-              res.data.deliveryChargeInsideDhaka ?? res.data.deliveryCharge ?? 60
-            ),
-            outsideDhaka: Number(res.data.deliveryChargeOutsideDhaka ?? 100),
-            cityRates: res.data.cityDeliveryRates || {},
-            threshold:
-              res.data.freeShippingThreshold !== null &&
-              res.data.freeShippingThreshold !== undefined &&
-              res.data.freeShippingThreshold !== ""
-                ? Number(res.data.freeShippingThreshold)
-                : 2000,
-          });
-        }
-      })
-      .catch(() => {});
+    const endpoints = [
+      "/api/settings",
+      `${API}/settings`,
+      "http://localhost:5000/api/settings",
+      "http://127.0.0.1:5000/api/settings",
+    ];
+
+    (async () => {
+      for (const ep of Array.from(new Set(endpoints))) {
+        try {
+          const r = await fetch(ep, { cache: "no-store" });
+          if (!r.ok) continue;
+          const res = await r.json();
+          if (res.success && res.data) {
+            const isAnnouncementOff = res.data.showAnnouncement === false;
+            const rawThreshold = res.data.freeShippingThreshold;
+            const hasExplicitThreshold =
+              rawThreshold !== null &&
+              rawThreshold !== undefined &&
+              rawThreshold !== "" &&
+              !isNaN(Number(rawThreshold));
+
+            setDeliveryRates({
+              insideDhaka: Number(
+                res.data.deliveryChargeInsideDhaka ?? res.data.deliveryCharge ?? 60
+              ),
+              outsideDhaka: Number(res.data.deliveryChargeOutsideDhaka ?? 100),
+              cityRates: res.data.cityDeliveryRates || {},
+              threshold:
+                isAnnouncementOff || !hasExplicitThreshold
+                  ? null
+                  : Number(rawThreshold),
+            });
+            break;
+          }
+        } catch {}
+      }
+    })();
   }, []);
 
-  const subtotal = items.reduce(
+  const [localItems, setLocalItems] = useState<CartItem[]>(items);
+
+  useEffect(() => {
+    setLocalItems(items);
+  }, [items]);
+
+  const getItemId = (item: CartItem) =>
+    item.variant?.id ||
+    `${item.product.id}-${item.variant?.size || "M"}-${item.variant?.color || "default"}`;
+
+  const isDhaka = useMemo(() => {
+    const norm = (
+      form.district === "Other" ? form.customDistrict : form.district
+    )
+      .toLowerCase()
+      .trim();
+    return !norm || norm.includes("dhaka");
+  }, [form.district, form.customDistrict]);
+
+  const subtotal = localItems.reduce(
     (n, item) =>
       n + Number(productPrice(item.product, item.variant)) * item.quantity,
     0
   );
 
-  const hasFreeItem = items.some((item) => isFreeDeliveryProduct(item.product));
+  const hasFreeItem = localItems.some((item) => isFreeDeliveryProduct(item.product));
 
   const effectiveShipping = useMemo(() => {
     if (subtotal === 0 || hasFreeItem) return 0;
@@ -221,47 +258,65 @@ export function CheckoutDialog({
     const maxStock = item.variant?.stock ?? 99;
     const nextQty = item.quantity + 1;
     if (nextQty > maxStock) {
-      setError(`Only ${maxStock} in stock for ${item.product.name} (${item.variant.size}).`);
+      setError(`Only ${maxStock} in stock for ${item.product.name} (${item.variant?.size || "standard"}).`);
       return;
     }
+    const key = getItemId(item);
+    setLocalItems((prev) =>
+      prev.map((i) => (getItemId(i) === key ? { ...i, quantity: nextQty } : i))
+    );
     if (onUpdateQuantity) {
-      onUpdateQuantity(item.variant.id, nextQty);
-    } else {
-      const current = getStoredCart();
-      const updated = current.map((i) =>
-        i.variant.id === item.variant.id ? { ...i, quantity: nextQty } : i
-      );
-      saveStoredCart(updated);
+      onUpdateQuantity(key, nextQty);
     }
+    const current = getStoredCart();
+    const updated = current.map((i) => {
+      const match =
+        (i.variant?.id && i.variant.id === key) ||
+        `${i.product.id}-${i.variant?.size || "M"}-${i.variant?.color || "default"}` === key;
+      return match ? { ...i, quantity: nextQty } : i;
+    });
+    saveStoredCart(updated);
   };
 
   const handleDecrease = (item: CartItem) => {
     setError("");
+    const key = getItemId(item);
     if (item.quantity <= 1) {
       handleDelete(item);
       return;
     }
     const nextQty = item.quantity - 1;
+    setLocalItems((prev) =>
+      prev.map((i) => (getItemId(i) === key ? { ...i, quantity: nextQty } : i))
+    );
     if (onUpdateQuantity) {
-      onUpdateQuantity(item.variant.id, nextQty);
-    } else {
-      const current = getStoredCart();
-      const updated = current.map((i) =>
-        i.variant.id === item.variant.id ? { ...i, quantity: nextQty } : i
-      );
-      saveStoredCart(updated);
+      onUpdateQuantity(key, nextQty);
     }
+    const current = getStoredCart();
+    const updated = current.map((i) => {
+      const match =
+        (i.variant?.id && i.variant.id === key) ||
+        `${i.product.id}-${i.variant?.size || "M"}-${i.variant?.color || "default"}` === key;
+      return match ? { ...i, quantity: nextQty } : i;
+    });
+    saveStoredCart(updated);
   };
 
   const handleDelete = (item: CartItem) => {
     setError("");
+    const key = getItemId(item);
+    setLocalItems((prev) => prev.filter((i) => getItemId(i) !== key));
     if (onRemoveItem) {
-      onRemoveItem(item.variant.id);
-    } else {
-      const current = getStoredCart();
-      const updated = current.filter((i) => i.variant.id !== item.variant.id);
-      saveStoredCart(updated);
+      onRemoveItem(key);
     }
+    const current = getStoredCart();
+    const updated = current.filter((i) => {
+      const match =
+        (i.variant?.id && i.variant.id === key) ||
+        `${i.product.id}-${i.variant?.size || "M"}-${i.variant?.color || "default"}` === key;
+      return !match;
+    });
+    saveStoredCart(updated);
   };
 
   const handleCopy = (text: string, label: string) => {
@@ -332,7 +387,7 @@ export function CheckoutDialog({
       }
     }
 
-    if (!items.length) {
+    if (!localItems.length) {
       setError("Your shopping bag is empty.");
       return;
     }
@@ -356,12 +411,12 @@ export function CheckoutDialog({
         paymentMethod !== "COD" && form.transactionId.trim()
           ? form.transactionId.trim()
           : undefined,
-      items: items.map((item) => ({
+      items: localItems.map((item) => ({
         productId: item.product.id,
-        variantId: item.variant.id,
+        variantId: item.variant?.id || null,
         quantity: item.quantity,
-        size: item.variant.size,
-        color: item.variant.color || null,
+        size: item.variant?.size || "M",
+        color: item.variant?.color || null,
       })),
     };
 
@@ -395,6 +450,9 @@ export function CheckoutDialog({
           break;
         } else if (data?.message) {
           lastErr = data.message;
+          if (res.status === 400 || res.status === 409 || res.status === 422) {
+            break;
+          }
         }
       } catch (err: any) {
         // Continue to fallback endpoint
@@ -955,13 +1013,13 @@ export function CheckoutDialog({
                     <h4>Order Summary</h4>
                   </div>
                   <span className="items-count-badge">
-                    {items.reduce((n, i) => n + i.quantity, 0)} Item(s)
+                    {localItems.reduce((n, i) => n + i.quantity, 0)} Item(s)
                   </span>
                 </div>
 
                 {/* Items List */}
                 <div className="summary-items-scroll">
-                  {items.length === 0 ? (
+                  {localItems.length === 0 ? (
                     <div className="checkout-empty-state-box">
                       <FiShoppingBag className="mx-auto text-3xl text-gray-400 mb-2" />
                       <p>Your bag is empty. Please add items to complete checkout.</p>
@@ -974,12 +1032,12 @@ export function CheckoutDialog({
                       </button>
                     </div>
                   ) : (
-                    items.map((item) => {
+                    localItems.map((item) => {
                       const price = Number(productPrice(item.product, item.variant));
                       const imgUrl = item.product.images?.[0]?.url;
 
                       return (
-                        <div key={item.variant.id} className="summary-item-card">
+                        <div key={getItemId(item)} className="summary-item-card">
                           <div className="item-thumb-box">
                             {imgUrl ? (
                               <img src={imgUrl} alt={item.product.name} />
@@ -1105,7 +1163,7 @@ export function CheckoutDialog({
                 {/* Submit / Confirm Button */}
                 <button
                   type="submit"
-                  disabled={busy || items.length === 0}
+                  disabled={busy || localItems.length === 0}
                   className="oofy-main-submit-btn"
                 >
                   {busy ? (

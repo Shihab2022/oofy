@@ -41,36 +41,55 @@ export const createOrder = asyncHandler(
       let subtotal = 0;
       let hasFreeDeliveryProduct = false;
 
+      const isUUID = (v?: string | null): boolean =>
+        typeof v === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+
       for (const item of items) {
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-          include: { variants: true },
-        });
+        let product: any = null;
+        if (isUUID(item.productId)) {
+          product = await tx.product.findUnique({
+            where: { id: item.productId },
+            include: { variants: true },
+          });
+        }
+        if (!product) {
+          product = await tx.product.findFirst({
+            where: {
+              OR: [
+                { slug: item.productId },
+                { name: { equals: item.productId, mode: 'insensitive' } },
+              ],
+            },
+            include: { variants: true },
+          });
+        }
+
         if (!product || !product.isPublished) {
           throw new ApiError(400, `Product "${item.productId}" is not available or unpublished`);
         }
 
         let variant: any = null;
-        if (item.variantId) {
-          variant = product.variants.find((v) => v.id === item.variantId);
+        if (item.variantId && isUUID(item.variantId)) {
+          variant = product.variants.find((v: any) => v.id === item.variantId);
         }
         if (!variant && item.size) {
           variant = product.variants.find(
-            (v) =>
-              v.size.toLowerCase() === item.size.toLowerCase() &&
-              (!item.color || !v.color || v.color.toLowerCase() === item.color.toLowerCase())
+            (v: any) =>
+              v.size.toLowerCase() === String(item.size).toLowerCase() &&
+              (!item.color || !v.color || v.color.toLowerCase() === String(item.color).toLowerCase())
           );
         }
         if (!variant && item.size) {
           variant = product.variants.find(
-            (v) => v.size.toLowerCase() === item.size.toLowerCase()
+            (v: any) => v.size.toLowerCase() === String(item.size).toLowerCase()
           );
         }
         if (!variant && product.variants.length > 0) {
           variant = product.variants[0];
         }
 
-        if (variant && variant.stock < item.quantity) {
+        if (variant && Number(variant.stock) < Number(item.quantity)) {
           throw new ApiError(
             400,
             `Not enough stock for "${product.name}" (Size: ${variant.size || item.size}). Available: ${variant.stock}`
@@ -82,11 +101,12 @@ export const createOrder = asyncHandler(
         const hasDiscount =
           product.discountPrice !== null &&
           product.discountPrice !== undefined &&
+          Number(product.discountPrice) > 0 &&
           Number(product.discountPrice) < basePrice;
 
         let unitPrice = hasDiscount ? Number(product.discountPrice) : basePrice;
 
-        if (variant && variant.price !== null && variant.price !== undefined) {
+        if (variant && variant.price !== null && variant.price !== undefined && Number(variant.price) > 0) {
           unitPrice = Number(variant.price);
         }
 
@@ -103,15 +123,15 @@ export const createOrder = asyncHandler(
         subtotal += itemTotal;
 
         orderItemsInput.push({
-          productId: item.productId,
-          variantId: variant?.id ?? null,
+          productId: product.id,
+          variantId: variant && isUUID(variant.id) ? variant.id : null,
           quantity: item.quantity,
           price: unitPrice as any,
-          size: item.size,
-          color: item.color || null,
+          size: variant?.size || item.size || 'M',
+          color: variant?.color || item.color || null,
         });
 
-        if (variant?.id) {
+        if (variant?.id && isUUID(variant.id)) {
           await tx.productVariant.update({
             where: { id: variant.id },
             data: { stock: { decrement: item.quantity } },
@@ -121,10 +141,10 @@ export const createOrder = asyncHandler(
 
       const parsedSettings = parseStoreSettings(settings);
       const normalizedDistrict = (district || '').trim().toLowerCase();
-      let baseDelivery = parsedSettings.deliveryChargeOutsideDhaka;
+      let baseDelivery = Number(parsedSettings.deliveryChargeOutsideDhaka ?? 100);
 
       if (normalizedDistrict.includes('dhaka')) {
-        baseDelivery = parsedSettings.deliveryChargeInsideDhaka;
+        baseDelivery = Number(parsedSettings.deliveryChargeInsideDhaka ?? parsedSettings.deliveryCharge ?? 60);
       } else if (parsedSettings.cityDeliveryRates) {
         for (const [cityName, rate] of Object.entries(parsedSettings.cityDeliveryRates)) {
           if (
@@ -137,12 +157,17 @@ export const createOrder = asyncHandler(
         }
       }
 
+      const isAnnouncementOff = parsedSettings.showAnnouncement === false;
+      const hasThreshold =
+        !isAnnouncementOff &&
+        parsedSettings.freeShippingThreshold !== null &&
+        parsedSettings.freeShippingThreshold !== undefined &&
+        parsedSettings.freeShippingThreshold !== '' &&
+        Number(parsedSettings.freeShippingThreshold) > 0;
+
       const isStorewideFreeDelivery =
         baseDelivery === 0 ||
-        (parsedSettings.freeShippingThreshold !== null &&
-          parsedSettings.freeShippingThreshold !== undefined &&
-          (Number(parsedSettings.freeShippingThreshold) === 0 ||
-            subtotal >= Number(parsedSettings.freeShippingThreshold)));
+        (hasThreshold && subtotal >= Number(parsedSettings.freeShippingThreshold));
 
       const isFreeShipping = hasFreeDeliveryProduct || isStorewideFreeDelivery;
 
@@ -202,27 +227,22 @@ export const createOrder = asyncHandler(
 
     const { order, totalAmount, subtotal, deliveryCharge } = result as any;
 
-    try {
-      await sendOrderConfirmationEmail(
-        order.customerEmail || order.customerPhone,
+    // Send notification emails asynchronously without blocking order response
+    if (order.customerEmail && order.customerEmail.includes('@')) {
+      sendOrderConfirmationEmail(
+        order.customerEmail,
         order.orderNumber,
         order.customerName,
         totalAmount
-      );
-    } catch (err) {
-      console.error('Customer confirmation email failed:', err);
+      ).catch((err) => console.error('Customer confirmation email failed:', err));
     }
-    try {
-      await sendOrderNotificationEmail(
-        order.orderNumber,
-        order.customerName,
-        order.customerPhone,
-        totalAmount,
-        order.items.length
-      );
-    } catch (err) {
-      console.error('Admin notification email failed:', err);
-    }
+    sendOrderNotificationEmail(
+      order.orderNumber,
+      order.customerName,
+      order.customerPhone,
+      totalAmount,
+      order.items.length
+    ).catch((err) => console.error('Admin notification email failed:', err));
 
     res.status(201).json({
       success: true,

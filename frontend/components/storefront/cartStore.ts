@@ -138,23 +138,65 @@ export function useCart() {
   );
 
   const updateQuantity = useCallback(
-    (variantId: string, quantity: number) => {
+    (variantIdOrIndex: string | number, quantity: number) => {
       const current = getStoredCart();
-      const updated =
-        quantity <= 0
-          ? current.filter((item) => item.variant.id !== variantId)
-          : current.map((item) =>
-              item.variant.id === variantId ? { ...item, quantity } : item
-            );
+      let updated: CartItem[];
+
+      if (typeof variantIdOrIndex === "number") {
+        const idx = variantIdOrIndex;
+        if (quantity <= 0) {
+          updated = current.filter((_, i) => i !== idx);
+        } else {
+          updated = current.map((item, i) =>
+            i === idx ? { ...item, quantity } : item
+          );
+        }
+      } else {
+        const key = String(variantIdOrIndex);
+        if (quantity <= 0) {
+          updated = current.filter((item) => {
+            const matchesId = item.variant?.id && item.variant.id === key;
+            const matchesComposite =
+              `${item.product.id}-${item.variant?.size || "M"}-${item.variant?.color || "default"}` === key;
+            const matchesProd = item.product.id === key;
+            return !(matchesId || matchesComposite || matchesProd);
+          });
+        } else {
+          updated = current.map((item) => {
+            const matchesId = item.variant?.id && item.variant.id === key;
+            const matchesComposite =
+              `${item.product.id}-${item.variant?.size || "M"}-${item.variant?.color || "default"}` === key;
+            const matchesProd = item.product.id === key;
+            return matchesId || matchesComposite || matchesProd
+              ? { ...item, quantity }
+              : item;
+          });
+        }
+      }
+
       saveStoredCart(updated);
       setCart(updated);
     },
     []
   );
 
-  const removeFromCart = useCallback((variantId: string) => {
+  const removeFromCart = useCallback((variantIdOrIndex: string | number) => {
     const current = getStoredCart();
-    const updated = current.filter((item) => item.variant.id !== variantId);
+    let updated: CartItem[];
+
+    if (typeof variantIdOrIndex === "number") {
+      updated = current.filter((_, i) => i !== variantIdOrIndex);
+    } else {
+      const key = String(variantIdOrIndex);
+      updated = current.filter((item) => {
+        const matchesId = item.variant?.id && item.variant.id === key;
+        const matchesComposite =
+          `${item.product.id}-${item.variant?.size || "M"}-${item.variant?.color || "default"}` === key;
+        const matchesProd = item.product.id === key;
+        return !(matchesId || matchesComposite || matchesProd);
+      });
+    }
+
     saveStoredCart(updated);
     setCart(updated);
   }, []);

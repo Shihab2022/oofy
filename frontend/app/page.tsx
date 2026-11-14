@@ -113,10 +113,11 @@ export default function HomePage() {
     loadData();
   }, [loadData]);
 
-  // Requirement 8: Home page shows only 6 in-stock products (stock-out products hidden on homepage)
+  // Requirement 8: Home page shows only 6 in-stock products (stock-out and unpublished products hidden on homepage)
   const homeInStockProducts = useMemo(() => {
     return products
       .filter((p) => {
+        if (p.isPublished === false) return false;
         const totalStock =
           p.variants?.reduce((sum, v) => sum + Number(v.stock || 0), 0) ?? 0;
         return totalStock > 0;
