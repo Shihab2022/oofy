@@ -13,16 +13,21 @@ export function formatProduct(p: any) {
   if (!p) return p;
   let isScheduled = false;
   let scheduledAt: string | null = null;
-  const match = (p.careInstructions || '').match(/\[SCHEDULED:([^\]]+)\]/);
-  if (match) {
-    scheduledAt = match[1];
-    const targetTime = new Date(scheduledAt).getTime();
+  const care = typeof p.careInstructions === 'string' ? p.careInstructions : '';
+  const match = care.match(/\[SCHEDULED:([^\]]+)\]/);
+  if (match && match[1]) {
+    const rawDate = match[1];
+    scheduledAt = rawDate;
+    const targetTime = new Date(rawDate).getTime();
     if (!isNaN(targetTime)) {
       isScheduled = Date.now() < targetTime;
     }
   }
 
-  const isLive = p.isPublished || (scheduledAt ? Date.now() >= new Date(scheduledAt).getTime() : false);
+  const isLive = Boolean(
+    p.isPublished ||
+    (scheduledAt ? Date.now() >= new Date(scheduledAt).getTime() : false)
+  );
 
   return {
     ...p,
@@ -50,7 +55,7 @@ export async function syncScheduledProducts() {
     const now = Date.now();
     for (const cand of scheduledCandidates) {
       const match = (cand.careInstructions || '').match(/\[SCHEDULED:([^\]]+)\]/);
-      if (match) {
+      if (match && match[1]) {
         const target = new Date(match[1]).getTime();
         if (!isNaN(target) && now >= target) {
           await db.product.update({

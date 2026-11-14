@@ -184,7 +184,7 @@ export default function AdminPage() {
     });
   };
 
-  const nav = [
+  const nav: [string, any][] = [
     ["Overview", FiGrid],
     ["Products", FiPackage],
     ["Promotions", FiPercent],
@@ -203,7 +203,7 @@ export default function AdminPage() {
         params.get("tab") || window.location.hash.replace("#", "");
       if (tabParam) {
         const found = nav.find(
-          ([label]: any) =>
+          ([label]) =>
             label.toLowerCase().replace(/\s+/g, "-") ===
               tabParam.toLowerCase() ||
             label.toLowerCase() === tabParam.toLowerCase()
@@ -3615,14 +3615,14 @@ function ProductEditor({ product, request, close, showToast, saved }: any) {
     imageInputUrl: "",
     published: product?.isPublished ?? true,
     featured: product?.isFeatured ?? false,
-    variants: product?.variants?.length
+    variants: (product?.variants?.length
       ? product.variants
       : [
           { size: "S", color: "Black", stock: 10, sku: "" },
           { size: "M", color: "Black", stock: 15, sku: "" },
           { size: "L", color: "Black", stock: 15, sku: "" },
           { size: "XL", color: "Black", stock: 10, sku: "" },
-        ],
+        ]) as any[],
   });
 
   // Scheduling State (Item 1)
@@ -3732,7 +3732,7 @@ function ProductEditor({ product, request, close, showToast, saved }: any) {
   // Quick Size Adders (Item 2 - Sizes & Stock UI Fix)
   const addSizePreset = (sizeLabel: string) => {
     const exists = form.variants.some(
-      (v) => v.size.toUpperCase() === sizeLabel.toUpperCase()
+      (v: any) => v.size.toUpperCase() === sizeLabel.toUpperCase()
     );
     if (exists) {
       showToast(`Size ${sizeLabel} is already in the list.`, "info");
@@ -3749,7 +3749,9 @@ function ProductEditor({ product, request, close, showToast, saved }: any) {
 
   const addStandardBatch = () => {
     const std = ["S", "M", "L", "XL", "XXL"];
-    const existingSizes = new Set(form.variants.map((v) => v.size.toUpperCase()));
+    const existingSizes = new Set(
+      form.variants.map((v: any) => v.size.toUpperCase())
+    );
     const toAdd = std
       .filter((s) => !existingSizes.has(s))
       .map((size) => ({ size, color: "Black", stock: 10, sku: "" }));
@@ -3821,7 +3823,7 @@ function ProductEditor({ product, request, close, showToast, saved }: any) {
   };
 
   const totalStock = form.variants.reduce(
-    (sum, v) => sum + (Number(v.stock) || 0),
+    (sum: number, v: any) => sum + (Number(v.stock) || 0),
     0
   );
 
@@ -4104,7 +4106,7 @@ function ProductEditor({ product, request, close, showToast, saved }: any) {
                               setForm({
                                 ...form,
                                 variants: form.variants.filter(
-                                  (_, i) => i !== index
+                                  (_: any, i: number) => i !== index
                                 ),
                               })
                             }
